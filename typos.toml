@@ -37,6 +37,9 @@ extend-exclude = [
     "docs/assets/*.png",
     # Generated benchmark results contain truncated task names
     "benchmarks/results/*.json",
+    # Translated READMEs — typos has only an English dictionary, every
+    # non-English word would be a false positive.
+    "docs/i18n/**",
 ]
 
 [type.md]
