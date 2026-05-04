@@ -1,5 +1,7 @@
 <div align="center">
 
+**English** | [Español (Spanish)](docs/i18n/README.es.md) | [中文 (Chinese)](docs/i18n/README.zh.md) | [العربية (Arabic)](docs/i18n/README.ar.md) | [Português (Portuguese)](docs/i18n/README.pt.md) | [Bahasa Indonesia (Indonesian)](docs/i18n/README.id.md) | [Français (French)](docs/i18n/README.fr.md) | [日本語 (Japanese)](docs/i18n/README.ja.md) | [Русский (Russian)](docs/i18n/README.ru.md) | [Deutsch (German)](docs/i18n/README.de.md) | [עברית (Hebrew)](docs/i18n/README.he.md) | [יידיש (Yiddish)](docs/i18n/README.yi.md)
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-light.svg">
