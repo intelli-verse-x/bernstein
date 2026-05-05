@@ -148,6 +148,7 @@ class _Registry:
         # first-party built-ins; credential-presence checks happen at
         # ``backend.create`` time, not at registry-load time.
         from bernstein.core.sandbox.backends.blaxel import BlaxelSandboxBackend
+        from bernstein.core.sandbox.backends.daytona import DaytonaSandboxBackend
         from bernstein.core.sandbox.backends.docker import DockerSandboxBackend
         from bernstein.core.sandbox.backends.worktree import WorktreeSandboxBackend
 
@@ -155,6 +156,7 @@ class _Registry:
             ("worktree", WorktreeSandboxBackend),
             ("docker", DockerSandboxBackend),
             ("blaxel", BlaxelSandboxBackend),
+            ("daytona", DaytonaSandboxBackend),
         )
         for name, cls in builtins:
             if name in self._all_names():
