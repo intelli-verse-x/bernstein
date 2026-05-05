@@ -263,6 +263,18 @@ def _parse_step(
     depends_on_repo_raw = step.get("depends_on_repo")
     task_depends_on_repo: str | None = str(depends_on_repo_raw) if depends_on_repo_raw else None
 
+    metadata: dict[str, object] = {}
+    phases_raw = step.get("phases")
+    if phases_raw:
+        from bernstein.core.orchestration.phase_pipeline import parse_phases
+
+        try:
+            parsed = parse_phases(phases_raw)
+        except ValueError as exc:
+            raise PlanLoadError(f"Step {step_index} in stage {stage_name!r}: invalid 'phases' field — {exc}") from exc
+        if parsed:
+            metadata["phases"] = [p.value for p in parsed]
+
     return Task(
         id=f"plan-{stage_index}-{step_index}",
         title=title,
@@ -283,6 +295,7 @@ def _parse_step(
         execution_mode=execution_mode,
         repo=task_repo,
         depends_on_repo=task_depends_on_repo,
+        metadata=metadata,
     )
 
 

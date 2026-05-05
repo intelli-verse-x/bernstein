@@ -46,6 +46,8 @@ MODEL_VALUES: list[str] = ["auto", "opus", "sonnet", "haiku"]
 
 EFFORT_VALUES: list[str] = ["low", "normal", "high", "max"]
 
+PHASE_VALUES: list[str] = ["research", "plan", "implement", "verify"]
+
 COMPLETION_SIGNAL_TYPES: list[str] = [
     "path_exists",
     "glob_exists",
@@ -143,6 +145,15 @@ _STEP_SCHEMA: dict[str, Any] = {
             "type": "array",
             "items": _COMPLETION_SIGNAL_SCHEMA,
             "description": "Machine-checkable completion criteria.",
+        },
+        "phases": {
+            "type": "array",
+            "items": {"type": "string", "enum": PHASE_VALUES},
+            "description": (
+                "Opt-in: split this step into discrete research/plan/implement/verify "
+                "phases with distilled handoffs (see core/orchestration/phase_pipeline.py). "
+                "When omitted the step runs as a single agent invocation."
+            ),
         },
     },
     "anyOf": [
