@@ -838,3 +838,8 @@ cli.add_command(acp_group, "acp")
 from bernstein.cli.commands.notify_cmd import notify_group  # noqa: E402
 
 cli.add_command(notify_group, "notify")
+
+# Per-artifact lineage trail (output → producer + inputs).
+from bernstein.cli.commands.lineage_cmd import lineage_cmd  # noqa: E402
+
+cli.add_command(lineage_cmd, "lineage")

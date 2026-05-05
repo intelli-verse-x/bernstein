@@ -249,6 +249,7 @@ _REDIRECT_MAP: dict[str, str] = {
     "license_manager": "bernstein.core.security.license_manager",
     "license_scanner": "bernstein.core.security.license_scanner",
     "lifecycle": "bernstein.core.tasks.lifecycle",
+    "lineage": "bernstein.core.persistence.lineage",
     "llm": "bernstein.core.routing.llm",
     "load_scaler": "bernstein.core.orchestration.load_scaler",
     "log_redact": "bernstein.core.observability.log_redact",

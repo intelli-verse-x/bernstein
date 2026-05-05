@@ -168,6 +168,19 @@ async def _create_fix_tasks_if_needed(
     return await create_fix_tasks(task, failed_descs, server_url, workdir=workdir)
 
 
+def compact_lineage_logs(workdir: Path) -> list[str]:
+    """Gzip rotated WAL files so lineage records stay compact.
+
+    Called from the janitor pass alongside task verification. The
+    active WAL file is left alone -- only rotated backups
+    (``<run_id>.wal.jsonl.<N>``) are compressed in place. Returns the
+    list of file names that were compressed.
+    """
+    from bernstein.core.persistence.lineage import compress_rotated_lineage
+
+    return compress_rotated_lineage(workdir / ".sdd")
+
+
 async def run_janitor(
     tasks: list[Task],
     workdir: Path,
