@@ -150,6 +150,7 @@ class _Registry:
         from bernstein.core.sandbox.backends.blaxel import BlaxelSandboxBackend
         from bernstein.core.sandbox.backends.daytona import DaytonaSandboxBackend
         from bernstein.core.sandbox.backends.docker import DockerSandboxBackend
+        from bernstein.core.sandbox.backends.runloop import RunloopSandboxBackend
         from bernstein.core.sandbox.backends.worktree import WorktreeSandboxBackend
 
         builtins: tuple[tuple[str, type[SandboxBackend]], ...] = (
@@ -157,6 +158,7 @@ class _Registry:
             ("docker", DockerSandboxBackend),
             ("blaxel", BlaxelSandboxBackend),
             ("daytona", DaytonaSandboxBackend),
+            ("runloop", RunloopSandboxBackend),
         )
         for name, cls in builtins:
             if name in self._all_names():
