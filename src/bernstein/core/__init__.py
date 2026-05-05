@@ -285,6 +285,7 @@ _REDIRECT_MAP: dict[str, str] = {
     "mcp_skill_registry": "bernstein.core.protocols.mcp.mcp_skill_registry",
     "mcp_task_filter": "bernstein.core.protocols.mcp.mcp_task_filter",
     "mcp_tool_normalization": "bernstein.core.protocols.mcp.mcp_tool_normalization",
+    "mcp_tool_search": "bernstein.core.protocols.mcp.mcp_tool_search",
     "mcp_transport": "bernstein.core.protocols.mcp.mcp_transport",
     "mcp_usage_analytics": "bernstein.core.protocols.mcp.mcp_usage_analytics",
     "mcp_version_compat": "bernstein.core.protocols.mcp.mcp_version_compat",

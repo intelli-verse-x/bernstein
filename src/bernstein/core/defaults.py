@@ -413,6 +413,26 @@ class CatalogDefaults:
 
 
 # ---------------------------------------------------------------------------
+# MCP tool-search lazy loading defaults
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MCPToolSearchDefaults:
+    """Lazy-loading thresholds for MCP tool descriptions in agent prompts.
+
+    When the combined size of every MCP tool's name + summary + JSON Schema
+    exceeds :attr:`threshold_tokens`, the prompt builder swaps the full
+    catalog for a ``tool_search`` meta-tool plus a compact name+summary
+    directory.  Full schemas are then fetched on demand by the agent.
+    """
+
+    enabled: bool = True
+    threshold_tokens: int = 6000
+    directory_budget_tokens: int = 1500
+
+
+# ---------------------------------------------------------------------------
 # Security defaults
 # ---------------------------------------------------------------------------
 
@@ -489,6 +509,7 @@ PHASE_PIPELINE = PhasePipelineDefaults()
 TRIGGER = TriggerDefaults()
 JANITOR = JanitorDefaults()
 CATALOG = CatalogDefaults()
+MCP_TOOL_SEARCH = MCPToolSearchDefaults()
 SECURITY = SecurityDefaults()
 ACTION_CACHE = ActionCacheDefaults()
 SCHEMA_RETRY = SchemaRetryDefaults()
@@ -496,6 +517,8 @@ SCHEMA_RETRY = SchemaRetryDefaults()
 # Module-level constant for direct import — preferred when only the
 # numeric cap is needed (no need to import the whole singleton).
 SCHEMA_RETRY_MAX_ATTEMPTS: int = SCHEMA_RETRY.max_attempts
+MCP_TOOL_SEARCH_ENABLED: bool = MCP_TOOL_SEARCH.enabled
+MCP_TOOL_SEARCH_THRESHOLD_TOKENS: int = MCP_TOOL_SEARCH.threshold_tokens
 
 
 # Mapping of section name (as used in bernstein.yaml ``tuning:`` blocks) to the
@@ -518,6 +541,7 @@ _SECTION_TO_ATTR: Mapping[str, str] = MappingProxyType(
         "trigger": "TRIGGER",
         "janitor": "JANITOR",
         "catalog": "CATALOG",
+        "mcp_tool_search": "MCP_TOOL_SEARCH",
         "security": "SECURITY",
         "action_cache": "ACTION_CACHE",
         "schema_retry": "SCHEMA_RETRY",
@@ -543,6 +567,7 @@ _ATTR_TO_FACTORY: Mapping[str, type[Any]] = MappingProxyType(
         "TRIGGER": TriggerDefaults,
         "JANITOR": JanitorDefaults,
         "CATALOG": CatalogDefaults,
+        "MCP_TOOL_SEARCH": MCPToolSearchDefaults,
         "SECURITY": SecurityDefaults,
         "ACTION_CACHE": ActionCacheDefaults,
         "SCHEMA_RETRY": SchemaRetryDefaults,

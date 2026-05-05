@@ -850,3 +850,61 @@ def handle_mcp_auth_error(server_name: str, error_code: int, error_message: str)
 def register_mcp_oauth_refresh(server_name: str, refresh_callback: Callable[[], str | None]) -> None:
     """Register OAuth refresh callback for an MCP server."""
     _oauth_refresh_handler.register_refresh_callback(server_name, refresh_callback)
+
+
+# ---------------------------------------------------------------------------
+# Tool-search lazy loading wire-in (tool-search-lazy-loading)
+# ---------------------------------------------------------------------------
+
+
+def build_tools_prompt_section(
+    tools: list[tuple[str, str, str, dict[str, Any]]],
+    *,
+    threshold_tokens: int | None = None,
+    directory_budget_tokens: int | None = None,
+    enabled: bool | None = None,
+) -> str:
+    """Render the MCP tools prompt section, lazy-loading when oversized.
+
+    Args:
+        tools: List of ``(server, tool_name, summary, schema)`` tuples
+            collected from live MCP sessions.
+        threshold_tokens: Catalog token cap before swapping to tool_search.
+            Defaults to :data:`MCP_TOOL_SEARCH_THRESHOLD_TOKENS`.
+        directory_budget_tokens: Cap for the compact directory after swap.
+        enabled: When ``False``, always return the inline catalog regardless
+            of size.  Defaults to :data:`MCP_TOOL_SEARCH_ENABLED`.
+
+    Returns:
+        Prompt-ready string.  Empty when ``tools`` is empty.
+    """
+    if not tools:
+        return ""
+
+    from bernstein.core.defaults import (
+        MCP_TOOL_SEARCH_ENABLED,
+        MCP_TOOL_SEARCH_THRESHOLD_TOKENS,
+    )
+    from bernstein.core.protocols.mcp.mcp_tool_search import (
+        ToolCatalog,
+        ToolEntry,
+        build_prompt_section,
+    )
+
+    use_lazy = enabled if enabled is not None else MCP_TOOL_SEARCH_ENABLED
+    threshold = threshold_tokens if threshold_tokens is not None else MCP_TOOL_SEARCH_THRESHOLD_TOKENS
+    budget = directory_budget_tokens if directory_budget_tokens is not None else 1500
+
+    catalog = ToolCatalog(
+        ToolEntry(name=name, summary=summary, server=server, schema=schema) for server, name, summary, schema in tools
+    )
+
+    if not use_lazy:
+        lines = ["MCP tools available:", *catalog.directory_lines()]
+        return "\n".join(lines)
+
+    return build_prompt_section(
+        catalog,
+        threshold_tokens=threshold,
+        directory_budget_tokens=budget,
+    )
