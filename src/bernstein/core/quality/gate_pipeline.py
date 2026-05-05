@@ -37,6 +37,7 @@ VALID_GATE_NAMES = frozenset(
         "integration_test_gen",
         "review_rubric",
         "test_expansion",
+        "incident_evals",
     }
 )
 VALID_GATE_CONDITIONS = frozenset({"always", "python_changed", "tests_changed", "any_changed", "deps_changed"})
@@ -158,6 +159,9 @@ _DEFAULT_GATE_SPECS: list[tuple[str, str, bool, str]] = [
     ("review_rubric", "review_rubric", True, "python_changed"),
     ("test_expansion", "test_expansion", False, "python_changed"),
     ("agent_test_mutation", "agent_test_mutation", True, "tests_changed"),
+    # P0 incident evals block merge; the gate runner reads severity from the
+    # YAML files under src/bernstein/eval/cases/incidents/.
+    ("incident_evals", "incident_evals", True, "always"),
 ]
 
 

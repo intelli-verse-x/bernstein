@@ -682,5 +682,33 @@ def eval_failures() -> None:
         console.print(f"  {cat}: {count}")
 
 
+@eval_group.command("sync-incidents")
+@click.option("--workdir", default=".", type=click.Path(exists=True), help="Project root.")
+@click.option("--dry-run", is_flag=True, default=False, help="Print what would be created without writing files.")
+def eval_sync_incidents(workdir: str, dry_run: bool) -> None:
+    """Convert dead-letter and post-mortem incidents into eval cases.
+
+    \b
+      bernstein eval sync-incidents              # write new YAML cases
+      bernstein eval sync-incidents --dry-run    # preview only
+    """
+    from bernstein.eval.incident_synthesizer import IncidentSynthesizer
+
+    root = Path(workdir).resolve()
+    synth = IncidentSynthesizer(root)
+    result = synth.sync(dry_run=dry_run)
+
+    if dry_run:
+        console.print(f"[bold]Dry run[/bold] — {len(result.created)} case(s) would be created:")
+    else:
+        console.print(f"[bold]{len(result.created)} new incident eval case(s) emitted[/bold]")
+    for case in result.created:
+        sev_color = {"P0": "red", "P1": "yellow", "P2": "dim"}.get(case.severity, "white")
+        console.print(f"  [{sev_color}]{case.severity}[/{sev_color}] {case.id}  ← {case.source_incident}")
+    console.print(
+        f"[dim]skipped duplicates={result.skipped_duplicates} unredactable={result.skipped_unredactable}[/dim]",
+    )
+
+
 # ---------------------------------------------------------------------------
 # workspace — multi-repo workspace management
