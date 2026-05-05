@@ -203,6 +203,8 @@ class ChatSession:
         self.bridge.on_command("reject", self._on_reject)
         self.bridge.on_command("switch", self._on_switch)
         self.bridge.on_command("stop", self._on_stop)
+        # op-005: cross-surface session handoff.
+        self.bridge.on_command("handoff", self._on_handoff)
         self.bridge.on_button(self._on_button)
 
     async def run_forever(self) -> None:
@@ -327,6 +329,85 @@ class ChatSession:
         )
         self.bindings.delete(self.bridge.platform, msg.thread_id)
         await self.bridge.send_message(msg.thread_id, "Stop requested. Session will wind down gracefully.")
+
+    async def _on_handoff(self, msg: ChatMessage) -> None:
+        """Handle ``/handoff [<token>]`` — emit or claim a resume token (op-005).
+
+        With no argument, freezes the current thread's binding and emits
+        a token. With a token argument, claims it and rebinds this
+        thread to the same session — the live stream will continue to
+        flow into the new thread without interrupting any in-flight
+        tool calls because the session id is preserved.
+        """
+        from bernstein.core.handoff import (
+            HandoffClaimError,
+            HandoffTokenStore,
+            HandoffUnknownTokenError,
+            StreamTailBuffer,
+        )
+
+        if not await self._gate(msg):
+            return
+
+        store = HandoffTokenStore(self.workdir)
+        if not msg.args:
+            binding = self.bindings.get(self.bridge.platform, msg.thread_id)
+            if binding is None or not binding.session_id:
+                await self.bridge.send_message(
+                    msg.thread_id,
+                    "No active session to hand off; start one with /run first.",
+                )
+                return
+            issued = store.issue(
+                session_id=binding.session_id,
+                task_id=binding.task_id,
+                source_surface="chat",
+                note=f"{self.bridge.platform}:{msg.thread_id}",
+            )
+            ttl_left = int(issued.expires_at - issued.issued_at)
+            await self.bridge.send_message(
+                msg.thread_id,
+                (
+                    f"Handoff token: `{issued.token}`\n"
+                    f"Valid for {ttl_left}s. Claim from another surface "
+                    f"with /handoff <token> or `bernstein handoff claim <token>`."
+                ),
+            )
+            return
+
+        token = msg.args[0].strip("`<> ")
+        try:
+            record = store.claim(token, claimed_by="chat")
+        except HandoffUnknownTokenError:
+            await self.bridge.send_message(msg.thread_id, "Unknown handoff token.")
+            return
+        except HandoffClaimError as exc:
+            await self.bridge.send_message(msg.thread_id, f"Could not claim token: {exc}")
+            return
+
+        # Rebind this thread to the same session_id so the live stream
+        # continues to flow without disrupting in-flight tool calls.
+        binding = self.bindings.get(self.bridge.platform, msg.thread_id)
+        if binding is None:
+            binding = Binding(
+                platform=self.bridge.platform,
+                thread_id=msg.thread_id,
+            )
+        binding.session_id = record.session_id
+        binding.task_id = record.task_id
+        self.bindings.put(binding)
+
+        tail = StreamTailBuffer(self.workdir, record.session_id).read(limit=20)
+        body_lines = [
+            f"Attached to session {record.session_id}"
+            + (f" / task {record.task_id}" if record.task_id else "")
+            + f" (from {record.source_surface}).",
+        ]
+        if tail:
+            body_lines.append(f"Recent stream tail ({len(tail)} line(s)):")
+            for entry in tail:
+                body_lines.append(f"  [{entry.surface}] {entry.text}")
+        await self.bridge.send_message(msg.thread_id, "\n".join(body_lines))
 
     async def _on_button(self, thread_id: str, approval_id: str, decision: str) -> None:
         """Persist an approve/reject decision to the security handshake dir."""
