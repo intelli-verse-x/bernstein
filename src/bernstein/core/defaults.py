@@ -347,6 +347,19 @@ class PhasePipelineDefaults:
     verify_model: str = "sonnet"
     artifact_root: str = ".sdd/runtime/phase_artifacts"
     gc_on_task_close: bool = True
+    # Mechanical exit-criteria gate (R001..R005) at every phase boundary.
+    # Defaults to True when phases are enabled; the gate runner is a no-op
+    # for single-phase tasks regardless of this flag.
+    gate_enabled: bool = True
+    # Number of retries the failing phase is re-fired before the task is
+    # marked ``failed`` with ``failure_kind="phase_gate"``.  v1 default is
+    # 1 — one retry is the value that actually closes the loop without
+    # busy-looping on a fundamentally broken artefact.
+    gate_max_retries: int = 1
+    # ``R005-byte-budget`` rejection counts as a hard fail rather than a
+    # retry: bloated artefacts usually mean the agent misunderstood the
+    # contract and a retry won't help.  Flip to ``False`` to allow retry.
+    gate_byte_budget_hard_fail: bool = True
 
 
 # ---------------------------------------------------------------------------
