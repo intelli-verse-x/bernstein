@@ -134,6 +134,10 @@ __all__ = [
     "merge_duration",
     "record_transition_reason",
     "registry",
+    "sandbox_exec_count_total",
+    "sandbox_session_created_total",
+    "sandbox_session_destroyed_total",
+    "sandbox_session_duration_seconds",
     "set_prometheus_enabled",
     "task_duration_seconds",
     "task_queue_depth",
@@ -319,6 +323,42 @@ best_of_n_judge_score: Histogram = Histogram(
     "LLM-as-judge rubric score per best-of-N candidate (0.0-1.0).",
     buckets=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
     labelnames=["role"],
+    registry=registry,
+)
+
+# ---------------------------------------------------------------------------
+# Sandbox session metrics (oai-002 phase 2).  Labelled by backend so the
+# orchestrator and operators can see which isolation primitive is in use
+# and how often agents bounce off it.  Cardinality is bounded by the
+# fixed set of registered backends (worktree, docker, e2b, modal, ...).
+# ---------------------------------------------------------------------------
+
+sandbox_session_created_total: Counter = Counter(
+    "bernstein_sandbox_session_created_total",
+    "Sandbox sessions created via SandboxBackend.create, by backend.",
+    labelnames=["backend"],
+    registry=registry,
+)
+
+sandbox_session_destroyed_total: Counter = Counter(
+    "bernstein_sandbox_session_destroyed_total",
+    "Sandbox sessions destroyed via SandboxBackend.destroy, by backend.",
+    labelnames=["backend"],
+    registry=registry,
+)
+
+sandbox_session_duration_seconds: Histogram = Histogram(
+    "bernstein_sandbox_session_duration_seconds",
+    "End-to-end session lifetime in seconds, by backend.",
+    buckets=(1, 5, 30, 60, 300, 1800, 3600, 7200),
+    labelnames=["backend"],
+    registry=registry,
+)
+
+sandbox_exec_count_total: Counter = Counter(
+    "bernstein_sandbox_exec_count_total",
+    "Commands executed via SandboxSession.exec, by backend and exit code.",
+    labelnames=["backend", "exit_code"],
     registry=registry,
 )
 
