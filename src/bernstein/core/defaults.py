@@ -326,6 +326,30 @@ class PlanDefaults:
 
 
 # ---------------------------------------------------------------------------
+# Phase pipeline defaults (opt-in discrete-phase-separation)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PhasePipelineDefaults:
+    """Opt-in research/plan/implement phase separation.
+
+    The pipeline is OFF by default for back-compat — single-phase plan files
+    keep their existing behaviour.  Steps opt in by declaring
+    ``phases: [research, plan, implement]`` and the global flag below must be
+    True for the orchestrator to route through :class:`PhasedRunner`.
+    """
+
+    enabled: bool = False
+    research_model: str = "opus"
+    plan_model: str = "opus"
+    implement_model: str = "sonnet"
+    verify_model: str = "sonnet"
+    artifact_root: str = ".sdd/runtime/phase_artifacts"
+    gc_on_task_close: bool = True
+
+
+# ---------------------------------------------------------------------------
 # Trigger defaults
 # ---------------------------------------------------------------------------
 
@@ -403,6 +427,7 @@ PARALLELISM = ParallelismDefaults()
 APPROVAL = ApprovalDefaults()
 PROTOCOL = ProtocolDefaults()
 PLAN = PlanDefaults()
+PHASE_PIPELINE = PhasePipelineDefaults()
 TRIGGER = TriggerDefaults()
 JANITOR = JanitorDefaults()
 CATALOG = CatalogDefaults()
@@ -424,6 +449,7 @@ _SECTION_TO_ATTR: Mapping[str, str] = MappingProxyType(
         "approval": "APPROVAL",
         "protocol": "PROTOCOL",
         "plan": "PLAN",
+        "phase_pipeline": "PHASE_PIPELINE",
         "trigger": "TRIGGER",
         "janitor": "JANITOR",
         "catalog": "CATALOG",
@@ -445,6 +471,7 @@ _ATTR_TO_FACTORY: Mapping[str, type[Any]] = MappingProxyType(
         "APPROVAL": ApprovalDefaults,
         "PROTOCOL": ProtocolDefaults,
         "PLAN": PlanDefaults,
+        "PHASE_PIPELINE": PhasePipelineDefaults,
         "TRIGGER": TriggerDefaults,
         "JANITOR": JanitorDefaults,
         "CATALOG": CatalogDefaults,
