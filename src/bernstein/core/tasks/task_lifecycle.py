@@ -571,7 +571,7 @@ def _enqueue_dlq_if_workdir(
         from bernstein.core.tasks.dead_letter_queue import DeadLetterQueue
 
         dlq = DeadLetterQueue(sdd_dir=workdir / ".sdd")
-        dlq.enqueue(
+        entry = dlq.enqueue(
             task_id=task.id,
             title=task.title,
             role=task.role,
@@ -595,6 +595,21 @@ def _enqueue_dlq_if_workdir(
             reason,
             exc,
         )
+        return
+
+    # Synthesise an incident eval case for this terminal failure. Failure
+    # to synthesise must never block the primary path either.
+    try:
+        from bernstein.eval.incident_synthesizer import IncidentSynthesizer
+
+        synth = IncidentSynthesizer(workdir)
+        case = synth.synthesize_from_dlq_entry(entry)
+        if case is not None:
+            existing = synth._load_existing_ids()
+            if case.id not in existing:
+                synth._write_case(case)
+    except Exception as exc:
+        logger.debug("incident synthesiser skipped for task %s: %s", task.id, exc)
 
 
 def retry_or_fail_task(

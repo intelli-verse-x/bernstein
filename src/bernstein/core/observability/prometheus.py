@@ -115,6 +115,8 @@ __all__ = [
     "evolve_proposals_total",
     "generate_latest",
     "get_transition_reason_histogram",
+    "incident_evals_total",
+    "incident_recurrence_rate",
     "memo_hits_total",
     "memo_misses_total",
     "memo_size_bytes",
@@ -250,6 +252,19 @@ memo_misses_total: Counter = Counter(
 memo_size_bytes: Gauge = Gauge(
     "bernstein_memo_size_bytes",
     "On-disk size of the persistent fingerprint memoization store in bytes.",
+    registry=registry,
+)
+
+incident_evals_total: Counter = Counter(
+    "bernstein_incident_evals_total",
+    "Incident-derived eval cases synthesised, by severity (P0/P1/P2).",
+    labelnames=["severity"],
+    registry=registry,
+)
+
+incident_recurrence_rate: Gauge = Gauge(
+    "bernstein_incident_recurrence_rate",
+    "Fraction of incident eval cases that re-fail in the most recent run.",
     registry=registry,
 )
 
