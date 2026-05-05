@@ -63,8 +63,12 @@ def _discover_registered_names() -> list[str]:
       contract test mocks Popen but can't mock the binary-availability
       check.  The adapter has its own integration test that skips when
       no tool is installed.
+    - ``clm`` — spawn() raises ClmConfigError unless CLM_ENDPOINT/TOKEN/MODEL
+      are set; the contract test mocks Popen but can't satisfy the runtime
+      config requirement.  Covered by ``test_adapter_clm.py`` and the
+      integration suite under ``tests/integration/adapters/``.
     """
-    return sorted(n for n in _ADAPTERS if n not in {"mock", "generic", "iac"})
+    return sorted(n for n in _ADAPTERS if n not in {"mock", "generic", "iac", "clm"})
 
 
 def _make_factory(name: str) -> Any:
