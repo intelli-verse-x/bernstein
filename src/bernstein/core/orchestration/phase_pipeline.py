@@ -385,7 +385,23 @@ batch jobs, or the production spawner integration.
 
 @dataclass
 class PhaseResult:
-    """Outcome of a single phase invocation."""
+    """Outcome of a single phase invocation.
+
+    Attributes:
+        phase: The phase that produced this result.
+        spec: Spec used for the phase.
+        artifact: Distilled artefact emitted by the executor.
+        artifact_path: Filesystem path the artefact was persisted to.
+        input_bytes: Bytes seen by the phase (size of the prior artefact).
+        output_bytes: Bytes the phase emitted.
+        gate_results: Per-rule :class:`GateResult` entries from the
+            mechanical exit-criteria gate that ran *after* this phase
+            completed.  Empty when no gate ran (single-phase tasks, or
+            ``PHASE_PIPELINE.gate_enabled=False``).
+        retry_count: Number of times this phase was re-fired due to gate
+            failure.  ``0`` on the happy path; ``≥1`` indicates the
+            artefact above is the (n+1)-th attempt.
+    """
 
     phase: Phase
     spec: PhaseSpec
@@ -393,6 +409,47 @@ class PhaseResult:
     artifact_path: Path
     input_bytes: int
     output_bytes: int
+    gate_results: list[Any] = field(default_factory=list)
+    retry_count: int = 0
+
+
+class PhaseGateFailure(RuntimeError):
+    """Raised when a phase's mechanical exit gate fails after retries.
+
+    Attributes:
+        phase: Phase whose artefact was rejected.
+        boundary: ``(from, to)`` tuple at which the gate fired.
+        failures: List of :class:`GateResult` entries with outcome FAIL.
+        retry_count: Number of retries the runner attempted before giving up.
+    """
+
+    def __init__(
+        self,
+        *,
+        phase: Phase,
+        boundary: tuple[Phase, Phase],
+        failures: list[Any],
+        retry_count: int,
+    ) -> None:
+        self.phase = phase
+        self.boundary = boundary
+        self.failures = failures
+        self.retry_count = retry_count
+        rule_ids = ", ".join(f.rule_id for f in failures)
+        super().__init__(
+            f"phase {phase.value!r} failed mechanical gate at boundary "
+            f"{boundary[0].value}->{boundary[1].value} after {retry_count} retry(s): {rule_ids}"
+        )
+
+
+GateLineageHook = Callable[["Task", Phase, tuple[Phase, Phase], list[Any]], None]
+"""Callback invoked once per boundary with the per-rule :class:`GateResult` list.
+
+Production wiring binds this to
+:func:`bernstein.core.orchestration.phase_pipeline_lineage.emit_phase_gate_event`
+which writes a ``phase_gate`` lineage record to the run's WAL.  Tests
+inject a no-op or a list-collecting hook.
+"""
 
 
 @dataclass
@@ -408,11 +465,34 @@ class PhasedRunner:
         executor: Callable that runs a single phase.  See :data:`PhaseExecutor`.
         store: Where to persist artefacts.  Defaults to ``.sdd/runtime/phase_artifacts``.
         phases: Optional override of the phase sequence.  Defaults to research → plan → implement.
+        gate_enabled: When True (default), the mechanical exit gate runs
+            at every phase boundary.  Failures re-fire the failing phase
+            up to *gate_max_retries* times with the violation list seeded
+            into ``open_questions``.
+        gate_max_retries: Number of re-fire attempts before raising
+            :class:`PhaseGateFailure`.  v1 default is 1.
+        gate_byte_budget_hard_fail: When True, an R005 byte-budget failure
+            short-circuits to :class:`PhaseGateFailure` immediately
+            without consuming a retry slot.
+        gate_lineage_hook: Optional callback for lineage emission.  See
+            :data:`GateLineageHook`.  ``None`` means no lineage event is
+            written (tests pass a list-collector to assert the call).
+        gate_allowed: Optional rule_id allowlist (intersected with the
+            built-in rule registry).  Drives the plan-YAML
+            ``phase_gates: [...]`` integration.
+        gate_denied: Optional rule_id denylist (entries removed at boundary
+            evaluation time).
     """
 
     executor: PhaseExecutor
     store: ArtifactStore = field(default_factory=ArtifactStore)
     phases: list[Phase] = field(default_factory=default_phases)
+    gate_enabled: bool = True
+    gate_max_retries: int = 1
+    gate_byte_budget_hard_fail: bool = True
+    gate_lineage_hook: GateLineageHook | None = None
+    gate_allowed: list[str] | None = None
+    gate_denied: list[str] | None = None
 
     def _spec_for(self, task: Task, phase: Phase) -> PhaseSpec:
         # Manager overrides on the task win, otherwise per-phase defaults apply.
@@ -430,6 +510,56 @@ class PhasedRunner:
             output_schema=base.output_schema,
         )
 
+    def _execute_one(
+        self,
+        task: Task,
+        spec: PhaseSpec,
+        prior: PhaseArtifact | None,
+    ) -> PhaseArtifact:
+        """Run *executor* and validate the artefact against its schema.
+
+        Factored out of :meth:`run` so the boundary-gate retry path can
+        re-fire a single phase with a mutated *prior* (violations seeded
+        into ``open_questions``) without duplicating the validation
+        plumbing.
+        """
+        artifact = self.executor(task, spec, prior)
+        if not isinstance(artifact, PhaseArtifact):
+            raise TypeError(
+                f"executor returned {type(artifact).__name__} for phase {spec.phase.value}; expected PhaseArtifact"
+            )
+        schema_errors = validate_phase_output(spec.phase, artifact.to_payload())
+        if schema_errors:
+            raise PhaseValidationError(spec.phase.value, schema_errors)
+        return artifact
+
+    def _seed_with_violations(
+        self,
+        prior: PhaseArtifact | None,
+        violation_questions: list[str],
+    ) -> PhaseArtifact:
+        """Build the seed artefact for a re-fire.
+
+        The retry seed is *prior* with the gate violations appended to
+        ``open_questions``.  When *prior* is ``None`` (the very first
+        boundary), a synthetic artefact is created so the agent still
+        sees the violation list.
+        """
+        if prior is None:
+            return PhaseArtifact(
+                summary="<initial seed; previous attempt failed mechanical gate>",
+                decisions=[],
+                constraints=[],
+                open_questions=list(violation_questions),
+            )
+        return PhaseArtifact(
+            summary=prior.summary,
+            decisions=list(prior.decisions),
+            constraints=list(prior.constraints),
+            open_questions=[*prior.open_questions, *violation_questions],
+            extras=dict(prior.extras),
+        )
+
     def run(self, task: Task) -> list[PhaseResult]:
         """Execute *task* through all configured phases.
 
@@ -437,24 +567,126 @@ class PhasedRunner:
         ``input_bytes`` reflects the size of the prior artefact (the only
         seed context the phase received), enabling the size-budget assertion
         called out in the ticket's acceptance criteria.
+
+        When :attr:`gate_enabled` is True (default) the mechanical
+        exit-criteria gate fires at every boundary.  A boundary failure
+        re-fires the failing phase up to :attr:`gate_max_retries` times
+        with the per-rule ``repair`` strings seeded into the next
+        invocation's ``open_questions``.  When the retry budget is
+        exhausted :class:`PhaseGateFailure` is raised — callers catch
+        this and surface ``failure_kind="phase_gate"`` to the task store.
         """
+        # Local import keeps the gates module out of import-time loops
+        # for callers that only need the runner's plain machinery.
+        from bernstein.core.orchestration.phase_gates import (
+            GateOutcome,
+            collect_failures,
+            evaluate_boundary,
+            violations_to_open_questions,
+        )
+
         results: list[PhaseResult] = []
         prior: PhaseArtifact | None = None
+        previous_phase: Phase | None = None
         for phase in self.phases:
             spec = self._spec_for(task, phase)
             input_bytes = len(prior.to_json().encode("utf-8")) if prior is not None else 0
-            artifact = self.executor(task, spec, prior)
-            if not isinstance(artifact, PhaseArtifact):
-                raise TypeError(
-                    f"executor returned {type(artifact).__name__} for phase {phase.value}; expected PhaseArtifact"
+
+            # Initial attempt
+            artifact = self._execute_one(task, spec, prior)
+            retry_count = 0
+            gate_results: list[Any] = []
+
+            if self.gate_enabled and previous_phase is not None:
+                boundary = (previous_phase, phase)
+                while True:
+                    gate_results = evaluate_boundary(
+                        prior=prior,
+                        current=artifact,
+                        boundary=boundary,
+                        spec=spec,
+                        allowed=self.gate_allowed,
+                        denied=self.gate_denied,
+                    )
+                    if self.gate_lineage_hook is not None:
+                        try:
+                            self.gate_lineage_hook(task, phase, boundary, gate_results)
+                        except Exception:
+                            logger.exception(
+                                "phase_gate lineage hook raised for task %s phase %s",
+                                task.id,
+                                phase.value,
+                            )
+
+                    failures = collect_failures(gate_results)
+                    if not failures:
+                        break
+
+                    # R005 byte-budget is configurable — by default it is
+                    # a hard fail (bloat usually means the agent
+                    # fundamentally misunderstood the contract).
+                    if self.gate_byte_budget_hard_fail and any(f.rule_id == "R005-byte-budget" for f in failures):
+                        raise PhaseGateFailure(
+                            phase=phase,
+                            boundary=boundary,
+                            failures=failures,
+                            retry_count=retry_count,
+                        )
+
+                    if retry_count >= self.gate_max_retries:
+                        raise PhaseGateFailure(
+                            phase=phase,
+                            boundary=boundary,
+                            failures=failures,
+                            retry_count=retry_count,
+                        )
+
+                    retry_count += 1
+                    seed = self._seed_with_violations(prior, violations_to_open_questions(failures))
+                    logger.warning(
+                        "phase_gate: task=%s phase=%s boundary=%s->%s retry=%d failures=%s",
+                        task.id,
+                        phase.value,
+                        boundary[0].value,
+                        boundary[1].value,
+                        retry_count,
+                        ",".join(f.rule_id for f in failures),
+                    )
+                    artifact = self._execute_one(task, spec, seed)
+            elif self.gate_enabled and previous_phase is None:
+                # First boundary still runs rules with applies_to == "any";
+                # R005 (byte budget) is the typical hit here.
+                boundary = (phase, phase)
+                gate_results = evaluate_boundary(
+                    prior=None,
+                    current=artifact,
+                    boundary=boundary,
+                    spec=spec,
+                    allowed=self.gate_allowed,
+                    denied=self.gate_denied,
                 )
-            # Strict per-phase schema check: an executor that produced a
-            # legally-shaped four-field artefact for, say, ``implement``
-            # without the required ``files_changed`` / ``tests_*`` extras
-            # is rejected at this boundary rather than slipping through.
-            schema_errors = validate_phase_output(phase, artifact.to_payload())
-            if schema_errors:
-                raise PhaseValidationError(phase.value, schema_errors)
+                if self.gate_lineage_hook is not None:
+                    try:
+                        self.gate_lineage_hook(task, phase, boundary, gate_results)
+                    except Exception:
+                        logger.exception(
+                            "phase_gate lineage hook raised for task %s phase %s",
+                            task.id,
+                            phase.value,
+                        )
+                failures = [r for r in gate_results if r.outcome is GateOutcome.FAIL]
+                if (
+                    failures
+                    and self.gate_byte_budget_hard_fail
+                    and any(f.rule_id == "R005-byte-budget" for f in failures)
+                ):
+                    raise PhaseGateFailure(
+                        phase=phase,
+                        boundary=boundary,
+                        failures=failures,
+                        retry_count=retry_count,
+                    )
+
             output_bytes = len(artifact.to_json().encode("utf-8"))
             path = self.store.write(task.id, phase, artifact)
             logger.info(
@@ -475,9 +707,12 @@ class PhasedRunner:
                     artifact_path=path,
                     input_bytes=input_bytes,
                     output_bytes=output_bytes,
+                    gate_results=gate_results,
+                    retry_count=retry_count,
                 )
             )
             prior = artifact
+            previous_phase = phase
         return results
 
 
@@ -515,9 +750,11 @@ def task_phases(task: Task) -> list[Phase]:
 
 __all__ = [
     "ArtifactStore",
+    "GateLineageHook",
     "Phase",
     "PhaseArtifact",
     "PhaseExecutor",
+    "PhaseGateFailure",
     "PhaseResult",
     "PhaseSchemaError",
     "PhaseSpec",

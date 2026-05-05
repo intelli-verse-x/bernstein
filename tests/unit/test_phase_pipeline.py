@@ -77,7 +77,10 @@ def _stub_executor(task: Task, spec: PhaseSpec, prior: PhaseArtifact | None) -> 
     return PhaseArtifact(
         summary="implemented from prior plan" if prior is not None else "implemented (no prior plan)",
         decisions=["committed"],
-        constraints=[],
+        # Carry constraints forward so R004-monotonic-constraint-set passes
+        # at the plan->implement boundary (implement is forbidden from
+        # silently dropping plan-level constraints).
+        constraints=list(prior.constraints) if prior is not None else [],
         open_questions=[],
         extras={
             "files_changed": ["src/foo.py"],
