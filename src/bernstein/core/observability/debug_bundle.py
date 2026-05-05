@@ -320,6 +320,22 @@ def collect_state(workdir: Path, config: BundleConfig) -> dict[str, str]:
         if summary:
             result["runtime_summary.json"] = json.dumps(summary, indent=2)
 
+    # Lineage records: include the run's lineage graph slice so auditors
+    # can answer "which agent + prompt produced this artifact?".
+    try:
+        from bernstein.core.persistence.lineage import (
+            bundle_records_to_jsonl,
+            collect_bundle_records,
+        )
+
+        lineage_records = collect_bundle_records(sdd)
+        if lineage_records:
+            jsonl = bundle_records_to_jsonl(lineage_records)
+            redacted_jsonl, _ = redact_secrets(jsonl)
+            result["lineage.jsonl"] = redacted_jsonl
+    except (ImportError, OSError):
+        pass
+
     return result
 
 

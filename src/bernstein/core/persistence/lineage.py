@@ -1,0 +1,357 @@
+"""Per-artifact lineage trail (output → producer + inputs).
+
+Adopts the manifest shape used by lineage-end-to-end systems
+(``cocoindex``-style): each transform that lands a file write emits a
+record of ``(output_artifact, [inputs], producer, prompt_sha)`` so a
+later compliance/drift query can walk the chain back to the originating
+prompt and source bytes.
+
+Storage strategy: lineage records are appended to the existing
+hash-chained WAL (``core.persistence.wal``) using
+``decision_type="lineage"``. Reusing the WAL writer keeps the hash
+chain intact -- lineage records are signed by the same chain that the
+audit log relies on -- and avoids introducing a second durability
+surface.
+
+The CLI ``bernstein lineage <file>:<line>`` walks every WAL file under
+``.sdd/runtime/wal/`` (current run only -- cross-run stitching is out
+of scope) and returns every record whose output artifact matches the
+requested file/line.
+"""
+
+from __future__ import annotations
+
+import gzip
+import hashlib
+import json
+import logging
+import shutil
+from dataclasses import asdict, dataclass, field
+from pathlib import Path  # noqa: TC003 -- runtime use in dataclass and helpers
+from typing import TYPE_CHECKING, Any
+
+from bernstein.core.persistence.wal import WALReader, WALWriter
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+logger = logging.getLogger(__name__)
+
+LINEAGE_DECISION_TYPE = "lineage"
+
+
+@dataclass(frozen=True)
+class ArtifactRef:
+    """Reference to a file region (an output cell or an input source).
+
+    ``byte_start`` / ``byte_end`` are inclusive/exclusive byte offsets
+    inside the file. They are optional -- a write that touches the
+    whole file leaves both ``None``. ``line_start`` / ``line_end`` are
+    1-indexed line numbers covering the same region; either or both
+    may be ``None`` if the producer cannot supply them.
+    """
+
+    path: str
+    sha256: str
+    byte_start: int | None = None
+    byte_end: int | None = None
+    line_start: int | None = None
+    line_end: int | None = None
+
+    def covers_line(self, line: int) -> bool:
+        """Return True when *line* falls inside ``[line_start, line_end]``.
+
+        When either bound is ``None``, the artifact is treated as
+        covering the whole file, so any line matches.
+        """
+        if self.line_start is None or self.line_end is None:
+            return True
+        return self.line_start <= line <= self.line_end
+
+
+@dataclass(frozen=True)
+class AgentRef:
+    """Identity of the producing agent run."""
+
+    agent_id: str
+    run_id: str
+    tick_id: str | None = None
+
+
+@dataclass(frozen=True)
+class LineageRecord:
+    """One lineage manifest entry (output → producer + inputs).
+
+    Matches the cocoindex manifest shape:
+    ``{output_id, inputs, fn_hash, ts}`` -- the fn_hash here is the
+    producing agent's rendered-prompt SHA so two replays with identical
+    prompts produce identical fn_hashes.
+    """
+
+    output_artifact: ArtifactRef
+    inputs: list[ArtifactRef] = field(default_factory=list[ArtifactRef])
+    producer: AgentRef = field(default_factory=lambda: AgentRef(agent_id="unknown", run_id="unknown"))
+    prompt_sha: str = ""
+    model: str = ""
+    cost_usd: float = 0.0
+    tokens: int = 0
+    timestamp: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Serialisation helpers
+# ---------------------------------------------------------------------------
+
+
+def _artifact_to_dict(ref: ArtifactRef) -> dict[str, Any]:
+    return asdict(ref)
+
+
+def _artifact_from_dict(data: dict[str, Any]) -> ArtifactRef:
+    return ArtifactRef(
+        path=str(data["path"]),
+        sha256=str(data["sha256"]),
+        byte_start=data.get("byte_start"),
+        byte_end=data.get("byte_end"),
+        line_start=data.get("line_start"),
+        line_end=data.get("line_end"),
+    )
+
+
+def _record_to_payload(record: LineageRecord) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split a record into (inputs, output) dicts for the WAL append call."""
+    inputs_payload: dict[str, Any] = {
+        "inputs": [_artifact_to_dict(a) for a in record.inputs],
+        "producer": asdict(record.producer),
+        "prompt_sha": record.prompt_sha,
+        "model": record.model,
+    }
+    output_payload: dict[str, Any] = {
+        "output_artifact": _artifact_to_dict(record.output_artifact),
+        "cost_usd": record.cost_usd,
+        "tokens": record.tokens,
+        "timestamp": record.timestamp,
+    }
+    return inputs_payload, output_payload
+
+
+def _record_from_wal(inputs: dict[str, Any], output: dict[str, Any], ts: float) -> LineageRecord:
+    out_dict = output.get("output_artifact", {})
+    producer_dict = inputs.get("producer", {})
+    return LineageRecord(
+        output_artifact=_artifact_from_dict(out_dict),
+        inputs=[_artifact_from_dict(a) for a in inputs.get("inputs", [])],
+        producer=AgentRef(
+            agent_id=str(producer_dict.get("agent_id", "unknown")),
+            run_id=str(producer_dict.get("run_id", "unknown")),
+            tick_id=producer_dict.get("tick_id"),
+        ),
+        prompt_sha=str(inputs.get("prompt_sha", "")),
+        model=str(inputs.get("model", "")),
+        cost_usd=float(output.get("cost_usd", 0.0)),
+        tokens=int(output.get("tokens", 0)),
+        timestamp=float(output.get("timestamp", ts)),
+    )
+
+
+def hash_file(path: Path) -> str:
+    """Return the SHA-256 hex digest of *path*, or ``""`` on read error."""
+    h = hashlib.sha256()
+    try:
+        with path.open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# LineageWriter
+# ---------------------------------------------------------------------------
+
+
+class LineageWriter:
+    """Append :class:`LineageRecord` entries to the run's hash-chained WAL.
+
+    The writer reuses :class:`WALWriter` so every emitted record is part
+    of the existing chain -- no separate file, no separate signing key,
+    no parallel verification path. Verifying the WAL hash chain
+    (``WALReader.verify_chain``) and the audit-log HMAC chain remains a
+    single operation.
+    """
+
+    def __init__(self, writer: WALWriter) -> None:
+        self._writer = writer
+
+    @classmethod
+    def for_run(cls, run_id: str, sdd_dir: Path) -> LineageWriter:
+        """Construct a writer bound to *run_id* under *sdd_dir*."""
+        return cls(WALWriter(run_id=run_id, sdd_dir=sdd_dir))
+
+    def emit(self, record: LineageRecord, *, actor: str | None = None) -> None:
+        """Append *record* to the WAL with ``decision_type='lineage'``.
+
+        Args:
+            record: The lineage record to persist.
+            actor: Optional override for the WAL ``actor`` field.
+                Defaults to the producing agent_id.
+        """
+        inputs_payload, output_payload = _record_to_payload(record)
+        self._writer.append(
+            decision_type=LINEAGE_DECISION_TYPE,
+            inputs=inputs_payload,
+            output=output_payload,
+            actor=actor or record.producer.agent_id,
+        )
+
+
+# ---------------------------------------------------------------------------
+# LineageReader (queries across all WAL files in the run)
+# ---------------------------------------------------------------------------
+
+
+class LineageReader:
+    """Read lineage records from one or more WAL files.
+
+    Matches the artifact-indexed access pattern: callers typically ask
+    "show me everything that produced ``src/foo.py``" rather than
+    "show me everything in event order".
+    """
+
+    def __init__(self, sdd_dir: Path) -> None:
+        self._sdd_dir = sdd_dir
+        self._wal_dir = sdd_dir / "runtime" / "wal"
+
+    def _iter_run_ids(self) -> Iterator[str]:
+        if not self._wal_dir.is_dir():
+            return
+        for wal_file in sorted(self._wal_dir.glob("*.wal.jsonl")):
+            yield wal_file.name.removesuffix(".wal.jsonl")
+
+    def iter_records(self, run_id: str | None = None) -> Iterator[LineageRecord]:
+        """Yield every lineage record for *run_id* (or every run when ``None``)."""
+        run_ids = [run_id] if run_id else list(self._iter_run_ids())
+        for rid in run_ids:
+            try:
+                reader = WALReader(run_id=rid, sdd_dir=self._sdd_dir)
+                for entry in reader.iter_entries():
+                    if entry.decision_type != LINEAGE_DECISION_TYPE:
+                        continue
+                    yield _record_from_wal(entry.inputs, entry.output, entry.timestamp)
+            except FileNotFoundError:
+                continue
+
+    def lookup(
+        self,
+        path: str,
+        line: int | None = None,
+        *,
+        run_id: str | None = None,
+    ) -> list[LineageRecord]:
+        """Return records whose ``output_artifact`` matches ``path[:line]``.
+
+        Args:
+            path: File path (matched by exact string equality).
+            line: 1-indexed line. When ``None``, every record for *path*
+                is returned. When set, only records whose artifact
+                covers that line are returned.
+            run_id: Restrict to one run; defaults to all runs in the WAL
+                directory.
+
+        Returns:
+            Newest record last (chronological order).
+        """
+        results: list[LineageRecord] = []
+        for record in self.iter_records(run_id=run_id):
+            if record.output_artifact.path != path:
+                continue
+            if line is not None and not record.output_artifact.covers_line(line):
+                continue
+            results.append(record)
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Compaction
+# ---------------------------------------------------------------------------
+
+
+def compress_rotated_lineage(sdd_dir: Path) -> list[str]:
+    """Gzip rotated WAL files containing lineage records.
+
+    The active ``<run_id>.wal.jsonl`` is left alone so the hash-chain
+    writer does not race with the compactor. Only rotated backups
+    (``<run_id>.wal.jsonl.<N>``) are compressed in place; the
+    ``.gz`` file replaces the rotated original on success.
+
+    Args:
+        sdd_dir: ``.sdd`` directory root.
+
+    Returns:
+        List of file names that were compressed.
+    """
+    wal_dir = sdd_dir / "runtime" / "wal"
+    if not wal_dir.is_dir():
+        return []
+
+    compressed: list[str] = []
+    for wal_file in wal_dir.iterdir():
+        name = wal_file.name
+        if not wal_file.is_file() or ".wal.jsonl" not in name:
+            continue
+        if name.endswith(".wal.jsonl"):
+            continue  # active file, skip
+        if name.endswith(".gz"):
+            continue
+        gz_path = wal_file.with_suffix(wal_file.suffix + ".gz")
+        if gz_path.exists():
+            continue
+        try:
+            with wal_file.open("rb") as f_in, gzip.open(gz_path, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
+            wal_file.unlink()
+            compressed.append(name)
+        except OSError:
+            logger.warning("lineage: failed to compress %s", wal_file, exc_info=True)
+            if gz_path.exists():
+                gz_path.unlink(missing_ok=True)
+    return compressed
+
+
+# ---------------------------------------------------------------------------
+# Bundle export (for ``bernstein debug bundle``)
+# ---------------------------------------------------------------------------
+
+
+def collect_bundle_records(sdd_dir: Path, *, max_records: int = 500) -> list[dict[str, Any]]:
+    """Return at most *max_records* lineage records as plain dicts.
+
+    Used by :mod:`bernstein.core.observability.debug_bundle` so the
+    debug bundle can include a per-run ``lineage.jsonl`` slice. Records
+    are tail-truncated (newest *max_records* kept) -- compliance use
+    cases generally want the latest activity, not the oldest.
+    """
+    reader = LineageReader(sdd_dir)
+    records: list[dict[str, Any]] = []
+    for record in reader.iter_records():
+        records.append(
+            {
+                "output_artifact": _artifact_to_dict(record.output_artifact),
+                "inputs": [_artifact_to_dict(a) for a in record.inputs],
+                "producer": asdict(record.producer),
+                "prompt_sha": record.prompt_sha,
+                "model": record.model,
+                "cost_usd": record.cost_usd,
+                "tokens": record.tokens,
+                "timestamp": record.timestamp,
+            }
+        )
+    if len(records) > max_records:
+        records = records[-max_records:]
+    return records
+
+
+def bundle_records_to_jsonl(records: list[dict[str, Any]]) -> str:
+    """Serialise *records* as a JSONL string for the debug bundle."""
+    return "\n".join(json.dumps(r, sort_keys=True, separators=(",", ":")) for r in records) + ("\n" if records else "")
