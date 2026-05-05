@@ -40,8 +40,22 @@ from bernstein.adapters.base import (
     build_worker_cmd,
 )
 from bernstein.adapters.env_isolation import build_filtered_env
-from bernstein.core.agents.spawner_warm_pool import parse_tool_allowlist_env
 from bernstein.core.protocols.cluster.cluster_tls import TLSConfig, TLSConfigError
+
+# Per-spawn tool allowlist env var (T578). Inlined from
+# ``core.agents.spawner_warm_pool`` to keep the adapter on the safe
+# side of the import-linter ``adapters → core.tasks`` contract; the
+# warm pool transitively imports task lifecycle.
+_TOOL_ALLOWLIST_ENV_VAR = "BERNSTEIN_TOOL_ALLOWLIST"
+
+
+def parse_tool_allowlist_env() -> list[str] | None:
+    """Read the per-spawn tool allowlist from the process env."""
+    raw = os.environ.get(_TOOL_ALLOWLIST_ENV_VAR, "").strip()
+    if not raw:
+        return None
+    return [t.strip() for t in raw.split(",") if t.strip()]
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
