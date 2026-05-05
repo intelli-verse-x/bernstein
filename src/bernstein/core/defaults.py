@@ -428,6 +428,32 @@ class SecurityDefaults:
 
 
 # ---------------------------------------------------------------------------
+# Action-cache defaults (action-caching-replay ticket)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ActionCacheDefaults:
+    """Action-level cache for deterministic LLM/tool replay.
+
+    Layered on :class:`bernstein.core.persistence.fingerprint.MemoStore`
+    — the action cache contributes the record schema and key derivation;
+    eviction and on-disk format come from MemoStore.
+
+    Modes:
+      * ``record`` — always live, append every call to the cache.
+      * ``replay`` — cache-only; misses raise ``CacheMiss``.  Used by the
+        $0 CI smoke test.
+      * ``hybrid`` — try cache, fall through to live on miss (default).
+      * ``off``   — disable lookups and writes entirely.
+    """
+
+    enabled: bool = True
+    mode: str = "hybrid"  # one of: record | replay | hybrid | off
+    size_mb: int = 500
+
+
+# ---------------------------------------------------------------------------
 # Singletons (rebindable via override()/reset())
 # ---------------------------------------------------------------------------
 
@@ -447,6 +473,7 @@ TRIGGER = TriggerDefaults()
 JANITOR = JanitorDefaults()
 CATALOG = CatalogDefaults()
 SECURITY = SecurityDefaults()
+ACTION_CACHE = ActionCacheDefaults()
 
 
 # Mapping of section name (as used in bernstein.yaml ``tuning:`` blocks) to the
@@ -470,6 +497,7 @@ _SECTION_TO_ATTR: Mapping[str, str] = MappingProxyType(
         "janitor": "JANITOR",
         "catalog": "CATALOG",
         "security": "SECURITY",
+        "action_cache": "ACTION_CACHE",
     }
 )
 
@@ -493,6 +521,7 @@ _ATTR_TO_FACTORY: Mapping[str, type[Any]] = MappingProxyType(
         "JANITOR": JanitorDefaults,
         "CATALOG": CatalogDefaults,
         "SECURITY": SecurityDefaults,
+        "ACTION_CACHE": ActionCacheDefaults,
     }
 )
 
