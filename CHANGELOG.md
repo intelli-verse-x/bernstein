@@ -2,6 +2,54 @@
 
 All notable project changes are tracked here (code + docs).
 
+## [1.10.0] — 2026-05-05
+
+### Added — operator surface
+
+- **Cluster-mode hardening** — native mTLS for node-to-node transport with `bernstein cluster bootstrap-ca`; real 2-process e2e test harness with 6 chaos scenarios (worker crash, central restart, network partition, token expiry, concurrent claims); 5 Prometheus metrics + 6 audit event types; documented Cloudflare Tunnel + Tailscale deployment patterns with nightly CI smoke.
+- **Air-gap distribution** — `scripts/build_airgap_wheelhouse.py` resolves the pinned dep closure into a signed wheelhouse; `bernstein verify <wheelhouse>` checksum + signature verification (cosign default, GPG path); new `--profile airgap` egress gate denies adapter/MCP network calls outside an explicit allow-list; `bernstein doctor airgap` self-checks.
+- **Per-artifact lineage trail** — every agent file write emits a signed record linking output (path + byte range + sha) to inputs, producer, prompt SHA, model, cost, tokens; schema v2 adds `regulatory_class` + customer-key Ed25519 signature for DORA/NIS2 evidence; tamper-loud detection in janitor with SIEM webhook + `bernstein lineage verify <run_id>`.
+- **Lethal-trifecta capability matrix** — declarative tags (PRIVATE_DATA / UNTRUSTED_INPUT / EXTERNAL_COMM); spawn-time refusal of any agent whose tool chain unions all three; bypass-immune via `policy_engine.evaluate_lethal_trifecta`; phase-emit policies now ride the same matrix.
+
+### Added — orchestration depth
+
+- **CLM (Cyber Language Model) gateway adapter** — thin sovereign-LLM adapter wrapping `aider` against an OpenAI-compatible CLM gateway; tool-calling allowlist, streaming-assembly lineage, opt-in mTLS via Phase 2.5 launcher shim.
+- **Phase pipeline** — discrete research/plan/implement/verify phase separation with distilled JSON handoffs; per-phase JSON-Schema validation registered as capability-matrix policy; R001-R005 mechanical exit gates (no-open-questions, decisions-reference-prior, acyclic graph, monotonic constraints, byte budget) with re-fire on violation; gate results land in lineage trail.
+- **Action cache** — `core/persistence/action_cache.py` layered on the new `MemoStore` for deterministic replay; `bernstein cache action stats|replay <run_id>`.
+- **Fingerprint memoization** — `hash(args) + hash(fn-AST)` keys; applied to cross-model verifier, knowledge-graph extractor, RAG embedder; the `test_changed_function_body_changes_key` regression closes the silent-stale-cache bug.
+- **Rework-rate ledger** — file-backed `(model, effort, phase, outcome)` JSONL under `.sdd/runtime/rework/`; cascade router auto-promotes (e.g. `sonnet → opus`) once the bucket exceeds `promotion_threshold=0.30` with `min_samples=20`.
+- **Best-of-N delegation** — opt-in parallel candidate spawning with judge-based selection; new `BEST_OF_N` defaults section; per-task `Task.best_of_n=K` override.
+- **Swarm migration** — `bernstein migrate` map-reduce fanout over file globs; idempotent via `.sdd/runtime/swarm/<plan>.json`; 2 starter migration templates.
+- **Discrete phase pipeline** — opt-in via `defaults.PHASE_PIPELINE.enabled` and per-step `phases:` field in plan YAML.
+
+### Added — quality + planning
+
+- **AST-aware reviewer chunking** — Python reviewer never receives a chunk that splits a function or class.
+- **Abstracted code review** — intent + pseudocode summary on diffs; cheap-tier reviewer with opus disallowed; collapsible raw-diff blocks in PR body.
+- **Schema-validation retry** — cross-step error accumulation with `SchemaRetryContext`; wired into manager parsing + MCP tool result decoding.
+- **Spec-as-test loop** — generates executable assertions from the immutable feature contract; gates on drift.
+- **Feature contract** — `.sdd/contract/features.json` with anchor over immutable fields + HMAC chain anchor; tampering surfaces `TamperingDetectedError`.
+- **Incident-to-eval synthesis** — terminally-failed tasks become regression eval cases under `eval/incident_synthesizer.py`.
+
+### Added — protocols + integrations
+
+- **Tool-search lazy loading** — meta-tool with BM25 ranking keeps MCP tool descriptions out of context until invoked.
+- **Static service manifest** — `/.well-known/agent.json` (A2A-compliant) + `/llms.txt` from a single dataclass-driven endpoint table.
+- **Spawner SandboxSession routing** — non-worktree backends now exec through `SandboxSession.exec()` with per-session asyncio loop; worktree backend stays on the legacy direct-subprocess path.
+- **Session handoff** — `bernstein handoff emit|claim|status`; `/handoff` chat slash-command + dashboard route; ring buffer for stream-tail replay.
+- **Routine-scenario bridge** — bidirectional `RoutineProvisioner` + 8 scenario templates; `bernstein routine scenarios|export|provision|register|bindings`.
+- **Agent-mode profiles** — declarative `templates/mode_profiles/{smart,deep,fast}.yaml`; deterministic family mapping (sonnet/opus → smart, haiku/qwen/ollama → fast, gpt-5*/o-series → deep).
+- **cocoindex-code MCP catalog entry** — registered as opt-in (`mcp.catalog.cocoindex_code.enabled = false` by default).
+
+### Changed
+
+- **Model catalogue refresh** — added GPT-5.5 / GPT-5.5-mini to cost + cascade tables; refreshed top-7 adapter install commands (claude, codex, gemini, ollama, cursor, aider, opencode); `Last verified 2026-05-05` markers on every adapter docstring.
+- **Default branch** — direct push to `main` is the convention everywhere; documentation + scripts updated to never reference `master`.
+
+### Documentation
+
+- Full doc audit covering every feature shipped this release; new pages under `docs/concepts/`, `docs/cluster/`, `docs/observability/`, `docs/compliance/`, `docs/sandbox/`, `docs/installation/`, `docs/adapters/`. Every feature page covers: one-line description, why, how-to, configuration knobs, limitations, related.
+
 ## [1.7.0] — 2026-04-14
 
 ### Added
