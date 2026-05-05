@@ -398,6 +398,10 @@ def create_mcp_server(
     _register_query_tools(mcp, server_url)
     _register_action_tools(mcp, server_url)
     _register_skill_tools(mcp)
+    # rt-003: scenario <-> Routine bridge tools.
+    from bernstein.mcp.routine_tools import register_scenario_tools
+
+    register_scenario_tools(mcp, server_url)
     return mcp
 
 
