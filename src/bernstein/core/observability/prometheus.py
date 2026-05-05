@@ -106,6 +106,8 @@ if not _PROMETHEUS_AVAILABLE:
 
 
 __all__ = [
+    "action_cache_hits_total",
+    "action_cache_savings_usd_total",
     "agent_spawn_duration",
     "agent_transition_reasons_total",
     "agents_active",
@@ -265,6 +267,20 @@ incident_evals_total: Counter = Counter(
 incident_recurrence_rate: Gauge = Gauge(
     "bernstein_incident_recurrence_rate",
     "Fraction of incident eval cases that re-fail in the most recent run.",
+    registry=registry,
+)
+
+action_cache_hits_total: Counter = Counter(
+    "bernstein_action_cache_hits_total",
+    "Action-cache hits: a recorded LLM/tool action served from disk instead of a live call.",
+    labelnames=["model"],
+    registry=registry,
+)
+
+action_cache_savings_usd_total: Counter = Counter(
+    "bernstein_action_cache_savings_usd",
+    "Cumulative USD saved by serving actions from the action cache.",
+    labelnames=["model"],
     registry=registry,
 )
 

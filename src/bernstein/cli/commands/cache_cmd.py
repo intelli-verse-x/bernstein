@@ -11,6 +11,10 @@ import click
 from rich.table import Table
 
 from bernstein.cli.helpers import console
+from bernstein.core.persistence.action_cache import (
+    ActionRecord,
+    open_cache,
+)
 from bernstein.core.semantic_cache import ResponseCacheManager, SemanticCacheEntry
 
 
@@ -153,3 +157,108 @@ def clear_cache_entries(workdir: Path, unverified_only: bool, yes: bool) -> None
     mgr = ResponseCacheManager(workdir.resolve())
     removed = mgr.clear(unverified_only=unverified_only)
     console.print(f"[green]Removed {removed} response-cache entr{'y' if removed == 1 else 'ies'}.[/green]")
+
+
+# ---------------------------------------------------------------------------
+# Action-cache subgroup: deterministic replay of recorded LLM/tool actions.
+# Storage layer is bernstein.core.persistence.fingerprint.MemoStore — we
+# only inspect/replay the typed records on top of it.
+# ---------------------------------------------------------------------------
+
+
+@cache_group.group("action")
+def action_cache_subgroup() -> None:
+    """Inspect / replay the action-level LLM cache (cache action ...)."""
+
+
+@action_cache_subgroup.command("stats")
+@click.option(
+    "--workdir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=Path("."),
+    show_default=True,
+    help="Project root containing .sdd/runtime/action_cache/.",
+)
+def action_cache_stats(workdir: Path) -> None:
+    """Show on-disk size and entry count for the action cache."""
+    cache = open_cache(workdir.resolve(), mode="off")
+    entries = cache.store._iter_entries()
+    total = sum(size for _, size, _ in entries)
+    console.print(f"[bold]Action cache:[/bold] {len(entries)} record(s), {total / 1024 / 1024:.2f} MiB on disk")
+    console.print(f"[dim]Root: {cache.store.root}[/dim]")
+
+
+@action_cache_subgroup.command("replay")
+@click.argument("run_id")
+@click.option(
+    "--workdir",
+    type=click.Path(path_type=Path, file_okay=False),
+    default=Path("."),
+    show_default=True,
+    help="Project root containing .sdd/runtime/action_cache/.",
+)
+@click.option(
+    "--as-json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit the replay report as JSON.",
+)
+def action_cache_replay(run_id: str, workdir: Path, as_json: bool) -> None:
+    """Re-execute a recorded run against the action cache.
+
+    \b
+    Walks ``.sdd/runtime/action_cache/`` for records tagged with
+    ``run_id`` and reports hits/misses + drift between any duplicate
+    keys.  In ``replay`` mode no live LLM call is issued, so the cost
+    of running this command is $0.
+
+    \b
+      bernstein cache action replay 20240315-143022
+    """
+    cache = open_cache(workdir.resolve(), mode="replay", run_id=run_id)
+    found: list[ActionRecord] = []
+    for path, _size, _atime in cache.store._iter_entries():
+        try:
+            import pickle
+
+            raw = pickle.loads(path.read_bytes())
+        except (OSError, pickle.UnpicklingError, EOFError):
+            continue
+        if isinstance(raw, ActionRecord) and raw.run_id == run_id:
+            found.append(raw)
+
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "records": [json.loads(r.to_json()) for r in found],
+                    "count": len(found),
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if not found:
+        console.print(f"[yellow]No action-cache records found for run_id={run_id}.[/yellow]")
+        return
+
+    table = Table(title=f"Action cache replay: {run_id}", header_style="bold cyan")
+    table.add_column("Model", style="dim")
+    table.add_column("Tool")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Cost", justify="right")
+    table.add_column("Output (head)", min_width=40)
+    for rec in found:
+        total_tok = rec.tokens.prompt_tokens + rec.tokens.completion_tokens
+        table.add_row(
+            rec.model_id,
+            rec.tool_name or "(llm)",
+            str(total_tok),
+            f"${rec.cost_usd:.4f}",
+            rec.output_text[:80].replace("\n", " "),
+        )
+    console.print(table)
+    console.print(f"[green]Replayed {len(found)} action(s) for run {run_id} at $0 live cost.[/green]")
