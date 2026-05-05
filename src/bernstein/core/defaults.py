@@ -552,6 +552,11 @@ MCP_TOOL_SEARCH_THRESHOLD_TOKENS: int = MCP_TOOL_SEARCH.threshold_tokens
 ABSTRACT_DIFF_ENABLED: bool = True
 ABSTRACT_DIFF_MAX_FILES: int = 50
 
+# Per-model agent mode profiles (smart/deep/fast).  When ``False`` the
+# spawner skips preamble injection and tool filtering — useful as a kill
+# switch while the feature is rolled out.
+MODE_PROFILES_ENABLED: bool = True
+
 
 # Mapping of section name (as used in bernstein.yaml ``tuning:`` blocks) to the
 # module-level attribute that stores the singleton.  We rebind the attribute
