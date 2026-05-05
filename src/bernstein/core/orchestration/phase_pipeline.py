@@ -28,6 +28,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from bernstein.core.orchestration.phase_schemas import (
+    PhaseSchemaError,
+    PhaseValidationError,
+    schema_for_phase,
+    validate_phase_output,
+)
+
 if TYPE_CHECKING:
     from bernstein.core.tasks.models import Task
 
@@ -95,14 +102,33 @@ class PhaseSpec:
 
     @classmethod
     def default(cls, phase: Phase) -> PhaseSpec:
-        """Return the default spec for *phase*."""
+        """Return the default spec for *phase*.
+
+        ``output_schema`` is now the strict per-phase schema from
+        :mod:`bernstein.core.orchestration.phase_schemas`, not the shared
+        scaffold.  Callers that previously relied on the union shape get
+        a tighter contract automatically.
+        """
         return cls(
             phase=phase,
             model=_DEFAULT_MODEL_BY_PHASE[phase],
             effort=_DEFAULT_EFFORT_BY_PHASE[phase],
             max_tokens=_DEFAULT_MAX_TOKENS_BY_PHASE[phase],
-            output_schema=_PHASE_ARTIFACT_SCHEMA,
+            output_schema=schema_for_phase(phase),
         )
+
+    def render_prompt_contract(self) -> str:
+        """Return a fenced JSON block the executor splats into the prompt.
+
+        The block is ready to inject verbatim into the agent prompt — it
+        starts and ends with the standard ```` ```json ```` fences so
+        downstream renderers do not need to know about the schema shape.
+        Sharing the bytes between the validator and the prompt template
+        eliminates the schema-drift axis where prompts drifted out of
+        sync with what the validator actually enforced.
+        """
+        body = json.dumps(self.output_schema, indent=2, sort_keys=True, ensure_ascii=False)
+        return f"```json\n{body}\n```"
 
 
 # ---------------------------------------------------------------------------
@@ -110,18 +136,12 @@ class PhaseSpec:
 # ---------------------------------------------------------------------------
 
 
-_PHASE_ARTIFACT_SCHEMA: dict[str, Any] = {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "type": "object",
-    "properties": {
-        "summary": {"type": "string"},
-        "decisions": {"type": "array", "items": {"type": "string"}},
-        "constraints": {"type": "array", "items": {"type": "string"}},
-        "open_questions": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["summary", "decisions", "constraints", "open_questions"],
-    "additionalProperties": False,
-}
+# NOTE: the legacy shared schema constant has been retired.  Each phase now
+# carries its own contract — see :mod:`bernstein.core.orchestration.phase_schemas`.
+# The four-field "research-shape" remains the canonical *minimum* and is what
+# :class:`PhaseArtifact` instances default to when constructed without explicit
+# extras; per-phase extras (``dependencies``, ``files_changed`` …) live in
+# :attr:`PhaseArtifact.extras` and are merged into the serialised payload.
 
 
 @dataclass
@@ -132,59 +152,105 @@ class PhaseArtifact:
     transcript of the research/plan phases.  Keep entries terse: the whole
     point is to compress N kilobytes of exploration into a few hundred bytes
     of explicit conclusions.
+
+    Attributes:
+        summary: One-paragraph distillation of what was learned/decided.
+        decisions: Atomic decisions; phase-specific markers (``<id:foo>``)
+            participate in the boundary-gate cross-references.
+        constraints: Hard constraints carried forward.
+        open_questions: Outstanding questions; the boundary gate seeds
+            this list back into the next prompt when validation fails.
+        extras: Per-phase extension fields (``dependencies`` for plan,
+            ``files_changed`` / ``tests_added`` / ``tests_passing`` for
+            implement, ``verdict`` for verify).  Persisted alongside the
+            four core fields so :func:`validate_phase_output` sees the
+            full payload.
     """
 
     summary: str
     decisions: list[str] = field(default_factory=list)
     constraints: list[str] = field(default_factory=list)
     open_questions: list[str] = field(default_factory=list)
+    extras: dict[str, Any] = field(default_factory=dict)
+
+    def to_payload(self) -> dict[str, Any]:
+        """Return the dict that gets validated and serialised.
+
+        Extras are merged in last so a malicious caller cannot shadow the
+        four core fields by stuffing same-named keys into ``extras``.
+        """
+        out: dict[str, Any] = dict(self.extras)
+        out["summary"] = self.summary
+        out["decisions"] = list(self.decisions)
+        out["constraints"] = list(self.constraints)
+        out["open_questions"] = list(self.open_questions)
+        return out
 
     def to_json(self) -> str:
         """Serialise to JSON for storage and as next-phase prompt input."""
-        return json.dumps(
-            {
-                "summary": self.summary,
-                "decisions": self.decisions,
-                "constraints": self.constraints,
-                "open_questions": self.open_questions,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+        return json.dumps(self.to_payload(), ensure_ascii=False, indent=2)
 
     @classmethod
-    def from_json(cls, raw: str) -> PhaseArtifact:
+    def from_json(cls, raw: str, *, phase: Phase | None = None) -> PhaseArtifact:
         """Parse a previously serialised artefact.
 
+        Args:
+            raw: JSON body to decode.
+            phase: When supplied, the payload is validated against that
+                phase's strict schema before construction.  Omit for the
+                legacy lenient parse — used by tests and by the
+                :class:`ArtifactStore` reader where the phase identity
+                has already been encoded into the file path.
+
         Raises:
-            ValueError: If the JSON is malformed or fails schema validation.
+            ValueError: If the JSON is malformed.
+            PhaseValidationError: If ``phase`` is supplied and the
+                payload fails its declared schema.
         """
         try:
             data = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise ValueError(f"phase artefact is not valid JSON: {exc}") from exc
-        return cls.from_dict(data)
+        return cls.from_dict(data, phase=phase)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> PhaseArtifact:
+    def from_dict(cls, data: dict[str, Any], *, phase: Phase | None = None) -> PhaseArtifact:
         """Build a :class:`PhaseArtifact` from a parsed mapping.
 
+        When ``phase`` is supplied the payload is validated by the strict
+        per-phase jsonschema validator; otherwise the legacy lenient
+        check (just verify the four core keys are present and well-typed)
+        is applied so existing test fixtures keep working.
+
         Raises:
-            ValueError: If required keys are missing or have the wrong type.
+            ValueError: If required core keys are missing or wrong-typed.
+            PhaseValidationError: If ``phase`` is supplied and the
+                payload fails the strict schema.
         """
-        for key in ("summary", "decisions", "constraints", "open_questions"):
-            if key not in data:
-                raise ValueError(f"phase artefact missing required key {key!r}")
-        if not isinstance(data["summary"], str):
-            raise ValueError("'summary' must be a string")
-        for k in ("decisions", "constraints", "open_questions"):
-            if not isinstance(data[k], list) or not all(isinstance(item, str) for item in data[k]):
-                raise ValueError(f"'{k}' must be a list of strings")
+        if phase is not None:
+            errors = validate_phase_output(phase, data)
+            if errors:
+                raise PhaseValidationError(
+                    phase.value if hasattr(phase, "value") else str(phase),
+                    errors,
+                )
+        else:
+            for key in ("summary", "decisions", "constraints", "open_questions"):
+                if key not in data:
+                    raise ValueError(f"phase artefact missing required key {key!r}")
+            if not isinstance(data["summary"], str):
+                raise ValueError("'summary' must be a string")
+            for k in ("decisions", "constraints", "open_questions"):
+                if not isinstance(data[k], list) or not all(isinstance(item, str) for item in data[k]):
+                    raise ValueError(f"'{k}' must be a list of strings")
+
+        extras = {k: v for k, v in data.items() if k not in {"summary", "decisions", "constraints", "open_questions"}}
         return cls(
             summary=data["summary"],
             decisions=list(data["decisions"]),
             constraints=list(data["constraints"]),
             open_questions=list(data["open_questions"]),
+            extras=extras,
         )
 
 
@@ -280,11 +346,17 @@ class ArtifactStore:
         return target
 
     def read(self, task_id: str, phase: Phase) -> PhaseArtifact | None:
-        """Return a previously stored artefact, or ``None`` if absent."""
+        """Return a previously stored artefact, or ``None`` if absent.
+
+        The phase is known from the file layout, so the strict per-phase
+        schema is enforced on read — a corrupted artefact on disk surfaces
+        as a :class:`PhaseValidationError` rather than as a silent shape
+        mismatch a few phases later.
+        """
         target = self._task_dir(task_id) / f"{phase.value}.json"
         if not target.exists():
             return None
-        return PhaseArtifact.from_json(target.read_text(encoding="utf-8"))
+        return PhaseArtifact.from_json(target.read_text(encoding="utf-8"), phase=phase)
 
     def gc_task(self, task_id: str) -> bool:
         """Delete all artefacts for *task_id*.  Returns True when something was removed."""
@@ -376,6 +448,13 @@ class PhasedRunner:
                 raise TypeError(
                     f"executor returned {type(artifact).__name__} for phase {phase.value}; expected PhaseArtifact"
                 )
+            # Strict per-phase schema check: an executor that produced a
+            # legally-shaped four-field artefact for, say, ``implement``
+            # without the required ``files_changed`` / ``tests_*`` extras
+            # is rejected at this boundary rather than slipping through.
+            schema_errors = validate_phase_output(phase, artifact.to_payload())
+            if schema_errors:
+                raise PhaseValidationError(phase.value, schema_errors)
             output_bytes = len(artifact.to_json().encode("utf-8"))
             path = self.store.write(task.id, phase, artifact)
             logger.info(
@@ -440,7 +519,9 @@ __all__ = [
     "PhaseArtifact",
     "PhaseExecutor",
     "PhaseResult",
+    "PhaseSchemaError",
     "PhaseSpec",
+    "PhaseValidationError",
     "PhasedRunner",
     "default_phases",
     "is_phased",

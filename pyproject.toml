@@ -79,6 +79,11 @@ dependencies = [
     # macOS Keychain / Linux Secret Service / Windows Credential Manager
     # backends. AES-GCM file fallback uses the existing ``cryptography`` dep.
     "keyring>=25.0",
+    # Strict per-phase artefact validation in
+    # ``src/bernstein/core/orchestration/phase_schemas.py``.  Already pulled in
+    # transitively by several deps; promoted to a direct dep so the phase
+    # pipeline does not silently degrade if a transitive owner drops it.
+    "jsonschema>=4.17",
 ]
 
 [project.urls]

@@ -72,12 +72,18 @@ def _stub_executor(task: Task, spec: PhaseSpec, prior: PhaseArtifact | None) -> 
             decisions=["step 1 add module", "step 2 wire loader"],
             constraints=list(prior.constraints),
             open_questions=[],
+            extras={"dependencies": ["step1->step2"]},
         )
     return PhaseArtifact(
-        summary="implemented" if prior is not None else "implemented (no prior)",
+        summary="implemented from prior plan" if prior is not None else "implemented (no prior plan)",
         decisions=["committed"],
         constraints=[],
         open_questions=[],
+        extras={
+            "files_changed": ["src/foo.py"],
+            "tests_added": ["tests/unit/test_foo.py"],
+            "tests_passing": ["tests/unit/test_foo.py::test_smoke"],
+        },
     )
 
 
@@ -170,7 +176,12 @@ def test_route_respects_task_overrides() -> None:
 
 def test_artifact_store_write_then_read(tmp_path: Path) -> None:
     store = ArtifactStore(root=tmp_path / "phase_artifacts")
-    art = PhaseArtifact(summary="s", decisions=[], constraints=[], open_questions=[])
+    art = PhaseArtifact(
+        summary="research summary long enough to satisfy schema",
+        decisions=[],
+        constraints=[],
+        open_questions=[],
+    )
     path = store.write("task-42", Phase.RESEARCH, art)
     assert path.exists()
     assert path.parent.name == "task-42"
@@ -182,9 +193,21 @@ def test_artifact_store_write_then_read(tmp_path: Path) -> None:
 
 def test_artifact_store_gc_removes_task_dir(tmp_path: Path) -> None:
     store = ArtifactStore(root=tmp_path / "phase_artifacts")
-    art = PhaseArtifact(summary="s", decisions=[], constraints=[], open_questions=[])
-    store.write("doomed", Phase.RESEARCH, art)
-    store.write("doomed", Phase.PLAN, art)
+    research_art = PhaseArtifact(
+        summary="research summary long enough to satisfy schema",
+        decisions=[],
+        constraints=[],
+        open_questions=[],
+    )
+    plan_art = PhaseArtifact(
+        summary="plan summary long enough to satisfy schema",
+        decisions=[],
+        constraints=[],
+        open_questions=[],
+        extras={"dependencies": ["a->b"]},
+    )
+    store.write("doomed", Phase.RESEARCH, research_art)
+    store.write("doomed", Phase.PLAN, plan_art)
     assert store.gc_task("doomed") is True
     assert store.read("doomed", Phase.RESEARCH) is None
     assert store.gc_task("doomed") is False
