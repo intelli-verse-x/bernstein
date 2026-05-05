@@ -853,6 +853,11 @@ from bernstein.cli.commands.wheelhouse_cmd import wheelhouse_group  # noqa: E402
 
 cli.add_command(wheelhouse_group, "wheelhouse")
 
+# rt-003: Claude Code Routine <-> scenario bridge.
+from bernstein.cli.commands.routine_cmd import routine_group  # noqa: E402
+
+cli.add_command(routine_group, "routine")
+
 # Cluster lifecycle helpers (mTLS bootstrap, etc.)
 from bernstein.cli.commands.cluster_cmd import cluster_group  # noqa: E402
 
