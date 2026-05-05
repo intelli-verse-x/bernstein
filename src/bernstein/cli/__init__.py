@@ -65,6 +65,7 @@ _CLI_REDIRECT_MAP: dict[str, str] = {
     "gateway_cmd": "bernstein.cli.commands.gateway_cmd",
     "gradients": "bernstein.cli.display.gradients",
     "graph_cmd": "bernstein.cli.commands.graph_cmd",
+    "handoff_cmd": "bernstein.cli.commands.handoff_cmd",
     "icons": "bernstein.cli.display.icons",
     "image_renderer": "bernstein.cli.display.image_renderer",
     "incident_cmd": "bernstein.cli.commands.incident_cmd",

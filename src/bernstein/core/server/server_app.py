@@ -1210,6 +1210,7 @@ def create_app(
     from bernstein.core.routes.graduation import router as graduation_router
     from bernstein.core.routes.grafana import router as grafana_router
     from bernstein.core.routes.graphql_api import router as graphql_router
+    from bernstein.core.routes.handoff import router as handoff_router
     from bernstein.core.routes.health import router as health_deps_router
     from bernstein.core.routes.hooks import router as hooks_router
     from bernstein.core.routes.identities import router as identities_router
@@ -1271,6 +1272,7 @@ def create_app(
         audit_log_router,
         graphql_router,
         graduation_router,
+        handoff_router,
         team_router,
         provider_latency_router,
         predictive_router,

@@ -857,3 +857,8 @@ cli.add_command(wheelhouse_group, "wheelhouse")
 from bernstein.cli.commands.cluster_cmd import cluster_group  # noqa: E402
 
 cli.add_command(cluster_group, "cluster")
+
+# op-005: cross-surface session handoff (terminal <-> chat <-> dashboard).
+from bernstein.cli.commands.handoff_cmd import handoff_group  # noqa: E402
+
+cli.add_command(handoff_group, "handoff")
