@@ -109,6 +109,7 @@ __all__ = [
     "action_cache_hits_total",
     "action_cache_savings_usd_total",
     "agent_spawn_duration",
+    "agent_spawns_by_mode_total",
     "agent_transition_reasons_total",
     "agents_active",
     "cluster_admission_failures_total",
@@ -191,6 +192,13 @@ agent_spawn_duration: Histogram = Histogram(
     "Time taken to spawn an agent subprocess.",
     buckets=(1, 2, 5, 10, 20, 30),
     labelnames=["adapter"],
+    registry=registry,
+)
+
+agent_spawns_by_mode_total: Counter = Counter(
+    "bernstein_agent_spawns_by_mode_total",
+    "Total agent spawns partitioned by applied mode profile.",
+    labelnames=["mode_profile"],
     registry=registry,
 )
 
