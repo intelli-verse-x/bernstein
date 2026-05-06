@@ -150,8 +150,7 @@ class CursorAdapter(CLIAdapter):
                 )
             except FileNotFoundError as exc:
                 raise RuntimeError(
-                    "cursor-agent not found in PATH. "
-                    "Install: curl https://cursor.com/install -fsS | bash"
+                    "cursor-agent not found in PATH. Install: curl https://cursor.com/install -fsS | bash"
                 ) from exc
             except PermissionError as exc:
                 raise RuntimeError(f"Permission denied executing cursor-agent: {exc}") from exc
