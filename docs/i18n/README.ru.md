@@ -117,7 +117,7 @@ Bernstein автоматически обнаруживает установле
 
 ```yaml
 internal_llm_provider: gemini            # или qwen, ollama, codex, goose, ...
-internal_llm_model: gemini-2.5-pro
+internal_llm_model: gemini-3.1-pro
 ```
 
 > [!TIP]

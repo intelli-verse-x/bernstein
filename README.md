@@ -126,7 +126,7 @@ Any adapter also works as the **internal scheduler LLM**. Run the entire stack w
 
 ```yaml
 internal_llm_provider: gemini            # or qwen, ollama, codex, goose, ...
-internal_llm_model: gemini-2.5-pro
+internal_llm_model: gemini-3.1-pro
 ```
 
 > [!TIP]

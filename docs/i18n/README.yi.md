@@ -119,7 +119,7 @@ Bernstein געפֿינט אויטאָמאַטיש די אינסטאַלירטע 
 
 ```yaml
 internal_llm_provider: gemini            # or qwen, ollama, codex, goose, ...
-internal_llm_model: gemini-2.5-pro
+internal_llm_model: gemini-3.1-pro
 ```
 
 > [!TIP]
