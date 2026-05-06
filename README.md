@@ -294,6 +294,19 @@ The table above compares Bernstein against LLM-orchestration frameworks (they or
 
 Bernstein's wedge in this category: **Python-native, MCP-server-first, widest adapter coverage, true multi-agent parallelism, deterministic scheduler with no LLM in the coordination loop**. If you want AWS-aligned tmux-session isolation with a hierarchical LLM supervisor, AWS Labs' `cao` is a closer fit; if your stack is TypeScript and you want a product with a dashboard, Composio's `@aoagents/ao` is a better fit; if you want a polished desktop ADE, emdash is; if you only use Claude Code and want a single Go binary that walks a plan top-to-bottom, ralphex is. If you want a primitive that imports into Python, exposes itself over MCP to any client, runs many agents in parallel, and covers the full agent breadth (including Qwen, Goose, Ollama, OpenAI Agents SDK, Cloudflare Agents, and more) — Bernstein.
 
+## What people use it for
+
+These are real workflow patterns from Bernstein's own docs, examples, and project surface — not invented customer quotes.
+
+- **Parallel test generation** — fan out across untested modules with `bernstein -g "Generate unit tests for untested modules in src/" --max-agents 5`.
+- **CI failure repair** — watch open PRs and dispatch scoped fixers with `bernstein autofix start --repo your-org/your-repo --foreground`.
+- **PR review follow-up** — turn review comments into tracked fix tasks with `bernstein review-responder start --repo your-org/your-repo --foreground`.
+- **Codebase modernization** — run wide refactors like `bernstein -g "Migrate callback-based modules in src/ to async/await and update tests" --max-agents 8`.
+- **Ticket-to-run workflows** — import GitHub, Jira, or Linear work directly with `bernstein from-ticket https://github.com/your-org/your-repo/issues/123 --run`.
+- **API-change safety checks** — catch downstream breakage before merge with `bernstein dep-impact --base main`.
+
+See [Who Uses Bernstein](docs/use-cases.md) for the longer version with command examples and notes on when each workflow fits.
+
 [^autogen]: AutoGen is in maintenance mode; successor is Microsoft Agent Framework 1.0.
 
 ## Monitoring
