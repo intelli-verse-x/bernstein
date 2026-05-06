@@ -148,6 +148,7 @@ nav:
       - Tutorial: getting-started/quickstart-tutorial.md
       - Install on Linux: getting-started/install-linux.md
       - Configuration: operations/CONFIG.md
+      - Use cases: use-cases.md
   - Concepts:
       - Architecture: architecture/ARCHITECTURE.md
       - Why deterministic: architecture/WHY_DETERMINISTIC.md
