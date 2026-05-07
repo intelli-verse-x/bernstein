@@ -4,7 +4,7 @@ Every audit event carries an HMAC that chains to the previous event's HMAC,
 forming a tamper-evident sequence.  Daily log rotation produces one JSONL
 file per day; the chain carries across file boundaries.
 
-Security (audit-043): the HMAC key lives OUTSIDE the audit log directory so
+Security: the HMAC key lives OUTSIDE the audit log directory so
 an attacker with write access to ``.sdd/audit/*.jsonl`` cannot also read or
 rotate the signing key. The default key location is
 ``$XDG_STATE_HOME/bernstein/audit.key`` (falling back to

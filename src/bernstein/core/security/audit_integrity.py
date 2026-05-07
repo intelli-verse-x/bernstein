@@ -1,4 +1,4 @@
-"""ENT-003: Audit log integrity verification on startup.
+"""Audit log integrity verification on startup.
 
 Verifies the last N audit log entries on orchestrator startup, checking
 that the HMAC chain is intact. Warns if any entries have been tampered
