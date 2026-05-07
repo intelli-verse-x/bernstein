@@ -186,6 +186,7 @@ nav:
       - OpenAI Agents SDK: adapters/openai-agents.md
       - CLM (Cyber Language Model): adapters/clm.md
       - Compatibility: adapters/compatibility.md
+      - Deferred adapters: adapter-deferred.md
       - Hook system: integrations/hook-system.md
       - Plugin SDK: integrations/plugin-sdk.md
       - MCP server injection: integrations/mcp-server-injection.md
