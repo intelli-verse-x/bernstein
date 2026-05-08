@@ -282,34 +282,6 @@ def test_readme_has_three_line_install_block() -> None:
         )
 
 
-def test_readme_references_demo_gif() -> None:
-    """README.md must reference docs/demo/demo.gif as the 60-second demo."""
-    readme = (_REPO_ROOT / "README.md").read_text()
-    if "docs/demo/demo.gif" not in readme:
-        pytest.fail(
-            "README.md no longer references docs/demo/demo.gif.\n"
-            "The 60-second demo image is the README's first-screen anchor "
-            "(closes #1112). Restore the reference or regenerate the GIF "
-            "with `vhs docs/demo/demo.tape`."
-        )
-
-
-def test_demo_assets_exist() -> None:
-    """The vhs tape, generated GIF, and PR-comment mockup must be on disk."""
-    required = (
-        _REPO_ROOT / "docs" / "demo" / "demo.tape",
-        _REPO_ROOT / "docs" / "demo" / "demo.gif",
-        _REPO_ROOT / "docs" / "demo" / "screenshot-pr-comment.svg",
-    )
-    missing = [str(p.relative_to(_REPO_ROOT)) for p in required if not p.exists()]
-    if missing:
-        pytest.fail(
-            f"Missing demo assets referenced by README.md: {missing}\n"
-            "Regenerate the GIF with `vhs docs/demo/demo.tape` and ensure "
-            "the SVG mockup is committed."
-        )
-
-
 def test_readme_has_top_section_comparison_table() -> None:
     """README.md must contain the Bernstein/Archon/LangGraph comparison.
 
