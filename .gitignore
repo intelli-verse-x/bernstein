@@ -10,9 +10,6 @@ build/
 .venv/
 
 # Environment variables
-.env
-.env.*
-.env.local
 
 # A2A v1.0 agent-card signing keys — minted on first run, must NEVER be committed.
 .bernstein/keys/
@@ -116,7 +113,6 @@ docs/openapi.json
 
 # pytest-benchmark output
 .benchmarks/
-.env
 
 # Local benchmark run artifacts (simulation/eval outputs — regenerated on demand)
 benchmarks/results/
@@ -146,3 +142,4 @@ docs/**/MT-*.md
 docs/**/OAI-*.md
 docs/**/SDD-*.md
 docs/**/RAG-*.md
+config.bat
