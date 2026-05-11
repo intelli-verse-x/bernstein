@@ -10,6 +10,8 @@
 
 > *"To achieve great things, two things are needed: a plan and not quite enough time."* — Leonard Bernstein
 
+*Named for Leonard Bernstein, the original orchestrator.*
+
 ### orchestrate any AI coding agent. any model. one command.
 
 [![CI](https://github.com/sipyourdrink-ltd/bernstein/actions/workflows/ci.yml/badge.svg)](https://github.com/sipyourdrink-ltd/bernstein/actions/workflows/ci.yml)
@@ -439,6 +441,7 @@ bernstein ps         # running agents
 bernstein cost       # spend by model/task
 bernstein doctor     # pre-flight checks
 bernstein recap      # post-run summary
+bernstein export     # shareable HTML/Markdown report of the latest run
 bernstein trace <ID> # agent decision trace
 bernstein run-changelog --hours 48  # changelog from agent-produced diffs
 bernstein explain <cmd>  # detailed help with examples
