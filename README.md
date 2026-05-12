@@ -18,7 +18,9 @@ Bernstein is named after Leonard Bernstein, the American conductor and composer.
 
 <div align="center">
 
-### orchestrate any AI coding agent. any model. one command.
+### the orchestrator your compliance team will sign off on.
+
+Multi-agent CLI orchestration with an HMAC-signed audit chain, signed agent cards, per-artefact lineage, and an air-gap deploy profile — for teams that have to show their work to a regulator.
 
 [![CI](https://github.com/sipyourdrink-ltd/bernstein/actions/workflows/ci.yml/badge.svg)](https://github.com/sipyourdrink-ltd/bernstein/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/bernstein)](https://pypi.org/project/bernstein/)
@@ -91,18 +93,24 @@ equally specific. these are the cases where you should pick something else:
 
 ### how it compares
 
-| Feature                                | Bernstein   | Archon   | LangGraph |
-|----------------------------------------|-------------|----------|-----------|
-| Deterministic scheduler (no LLM in loop) | yes       | no       | no        |
-| Multi-agent crew (parallel adapters)   | yes         | one      | yes       |
-| Signed lineage / audit chain           | yes         | no       | no        |
-| Air-gap / sovereign deploy             | yes         | partial  | no        |
-| Visual workflow YAML                   | yes [^yaml] | yes      | no        |
-| Hosted dashboard / SaaS                | no          | partial  | no        |
+The honest read: Bernstein is the smaller player on stars in this category. What it has that the bigger ones don't is the auditability surface a regulated buyer needs — HMAC-chained audit, signed agent cards, per-artefact lineage with customer-key signing, and an air-gap deploy profile. If you're a compliance team writing the deployment review for a DORA / NIS2 / EU AI Act Article 12 environment, that's the column that matters.
 
-[^yaml]: Workflow YAML shipped in [PR #1117](https://github.com/sipyourdrink-ltd/bernstein/pull/1117) (merged 2026-05-08). Plans are authored as YAML and validated by `bernstein workflow validate`.
+| Feature                          | Bernstein       | claude-flow (49k⭐) | Archon (21k⭐) | vibe-kanban (26k⭐) | claude-squad (7.4k⭐) | Composio AO (7k⭐) |
+|----------------------------------|-----------------|---------------------|----------------|---------------------|------------------------|--------------------|
+| Hook they sell                   | regulated / on-prem / audit | swarm intelligence, hive-mind, 314 MCP tools | deterministic + repeatable workflow YAML, web UI | kanban board UI for parallel Claude | polished Go TUI, tmux-native | TypeScript dashboard, CI fixer |
+| LLM in scheduling loop           | no              | yes (swarm)         | partial        | yes                 | no                     | yes                |
+| CLI adapter count                | 43              | ~5                  | ~10            | ~6                  | ~5                     | 3                  |
+| HMAC-chained audit log           | yes             | no                  | no             | no                  | no                     | no                 |
+| Signed agent cards (detached JWS) | yes            | no                  | no             | no                  | no                     | no                 |
+| Per-artefact lineage, customer-key signed | yes    | no                  | no             | no                  | no                     | no                 |
+| Air-gap / on-prem profile        | yes             | no (cloud-leaning)  | partial        | no                  | no                     | no                 |
+| MCP server mode                  | yes             | yes (314 tools)     | yes            | no                  | no                     | no                 |
+| Python library (importable)      | yes             | no                  | no             | no                  | no                     | no                 |
+| Primary surface                  | CLI + lib + MCP | CLI + web           | CLI + web      | desktop board       | TUI                    | CLI + dashboard    |
 
-A longer feature matrix against CrewAI, AutoGen, LangGraph, and the four CLI-agent orchestrators that share Bernstein's category lives in the [Detailed comparison](#detailed-comparison) section below.
+Star counts captured 2026-05-12; numbers drift. Source memo: [`.sdd/competitors.md`](.sdd/competitors.md). The "hook they sell" column is each project's own framing, not a Bernstein opinion.
+
+Workflow YAML shipped in [PR #1117](https://github.com/sipyourdrink-ltd/bernstein/pull/1117) (merged 2026-05-08); plans are authored as YAML and validated by `bernstein workflow validate`. The longer feature matrix and the previous-generation Python multi-agent frameworks (CrewAI, AutoGen, LangGraph) are in the [Detailed comparison](#detailed-comparison) section below; that comparison is kept for completeness, but Bernstein and those projects are different shapes — they orchestrate Python LLM calls, Bernstein orchestrates CLI coding agents in git worktrees.
 
 ---
 
@@ -379,6 +387,10 @@ performs vector search.
 
 ## detailed comparison
 
+The closest competitors share Bernstein's shape — multi-agent CLI orchestration in git worktrees. Those are compared in the next table.
+
+The table immediately below covers **previous-generation Python multi-agent frameworks** (CrewAI, AutoGen, LangGraph). Their orchestrator is an LLM that drives Python tool calls; Bernstein's orchestrator is plain Python that drives terminal coding agents. Different problem, different shape — kept here for completeness.
+
 | Feature | Bernstein | CrewAI | AutoGen [^autogen] | LangGraph |
 |---------|-----------|--------|---------|-----------|
 | Orchestrator | Deterministic code | LLM-driven (+ code Flows) | LLM-driven | Graph + LLM |
@@ -402,25 +414,29 @@ performs vector search.
 
 The table above compares Bernstein against LLM-orchestration frameworks (they orchestrate LLM calls). The table below covers the closer category: other tools that orchestrate **CLI coding agents**:
 
-| Feature | Bernstein | [awslabs/cli-agent-orchestrator](https://github.com/awslabs/cli-agent-orchestrator) | [ComposioHQ/agent-orchestrator](https://github.com/ComposioHQ/agent-orchestrator) | [emdash](https://github.com/generalaction/emdash) | [umputun/ralphex](https://github.com/umputun/ralphex) |
-|---------|-----------|-----------|-----------|-----------|-----------|
-| Shape | Python CLI + library + MCP server | Python CLI + tmux sessions + web UI | TypeScript CLI + local dashboard | Electron desktop app | Go CLI |
-| Primary language | Python | Python | TypeScript | TypeScript | Go |
-| Install | `pipx install bernstein` | `uv tool install cli-agent-orchestrator` | `npm install -g @aoagents/ao` | `.dmg` / `.msi` / `.AppImage` | `go install` / single binary |
-| Agent adapters | 43 | 5 (Kiro, Claude Code, Codex, Gemini, Kimi) | 3 (Claude Code, Codex, Aider) | 24 | 1 (Claude Code only) |
-| Parallel multi-agent execution | Yes | Yes (tmux session per agent) | Yes | Yes | No (single sequential session) |
-| Git worktree per agent | Yes | No (planned, [#100](https://github.com/awslabs/cli-agent-orchestrator/issues/100)) | Yes | Yes | Optional `--worktree` flag |
-| MCP server mode (exposes self as MCP) | Yes (stdio + HTTP/SSE) | Yes (inter-agent comms) | No | No | No |
-| Coordinator | Deterministic Python scheduler | Hierarchical LLM supervisor | LLM-driven | Not documented | Linear plan executor |
-| HMAC-chained audit replay | Yes | No | No | No | No |
-| Cross-model verifier / quality gates | Yes (multi-stage) | No | No | No | Multi-phase review (Claude only) |
-| Autonomous CI-fix / PR flow | Yes (`bernstein autofix`) | No | Yes | No | No |
-| Visual dashboard | TUI + web | Web UI + tmux | Web | Desktop app | Web (`--serve`) |
-| Notification sinks | Telegram/Slack/Discord/Email/Webhook/Shell | — | No | No | Telegram / Email / Slack / Webhook |
-| Backing | Solo OSS | AWS Labs | Funded (Composio.dev) | YC W26 | Solo OSS |
-| License | Apache 2.0 | Apache 2.0 | MIT | Apache 2.0 | MIT |
+| Feature | Bernstein | [claude-flow](https://github.com/ruvnet/claude-flow) | [Archon](https://github.com/coleam00/Archon) | [vibe-kanban](https://github.com/BloopAI/vibe-kanban) | [claude-squad](https://github.com/smtg-ai/claude-squad) | [Composio AO](https://github.com/ComposioHQ/agent-orchestrator) |
+|---------|-----------|-----------|-----------|-----------|-----------|-----------|
+| Stars (2026-05-12) | 321 | 49k | 21k | 26k | 7.4k | 7k |
+| Their hook | regulated / on-prem / audit | swarm intelligence + 314 MCP tools | deterministic + repeatable, web UI | kanban board UI | polished Go TUI, tmux-native | TypeScript dashboard, CI fixer |
+| Shape | Python CLI + library + MCP server | CLI + web | CLI + web | desktop board | Go TUI | TypeScript CLI + dashboard |
+| Primary language | Python | TypeScript / Node | Python | TypeScript | Go | TypeScript |
+| Install | `pipx install bernstein` | `npm install -g claude-flow` | self-host | `npm install -g vibe-kanban` | `brew install claude-squad` | `npm install -g @aoagents/ao` |
+| Agent adapters | 43 | ~5 | ~10 | ~6 | ~5 (Claude family) | 3 (Claude Code, Codex, Aider) |
+| Parallel multi-agent execution | Yes | Yes (swarm) | Yes | Yes | Yes (tmux multiplex) | Yes |
+| Git worktree per agent | Yes | No (swarm-based) | Yes | Yes | Yes | Yes |
+| Coordinator | Deterministic Python scheduler | LLM swarm | Workflow + partial LLM | LLM-driven | Plan executor (no LLM in loop) | LLM-driven |
+| HMAC-chained audit replay | Yes | No | No | No | No | No |
+| Signed agent cards (detached JWS) | Yes | No | No | No | No | No |
+| Per-artefact lineage (customer-key signed) | Yes | No | No | No | No | No |
+| Air-gap / on-prem profile | Yes (`--profile airgap`) | No (cloud-leaning) | Partial | No | No | No |
+| MCP server mode (exposes self as MCP) | Yes (stdio + HTTP/SSE) | Yes (314 tools) | Yes | No | No | No |
+| Python library (importable) | Yes | No | No | No | No | No |
+| Autonomous CI-fix / PR flow | Yes (`bernstein autofix`) | No | No | No | No | Yes |
+| License | Apache 2.0 | MIT | MIT | Apache 2.0 | MIT | MIT |
 
-Bernstein's wedge in this category: Python-native, MCP-server-first, widest adapter coverage, true multi-agent parallelism, deterministic scheduler with no LLM in the coordination loop. If you want AWS-aligned tmux-session isolation with a hierarchical LLM supervisor, AWS Labs' `cao` is a closer fit; if your stack is TypeScript and you want a product with a dashboard, Composio's `@aoagents/ao` is a better fit; if you want a polished desktop ADE, emdash is; if you only use Claude Code and want a single Go binary that walks a plan top-to-bottom, ralphex is. If you want a primitive that imports into Python, exposes itself over MCP to any client, runs many agents in parallel, and covers the full agent breadth (including Qwen, Goose, Ollama, OpenAI Agents SDK, Cloudflare Agents, and more), Bernstein.
+Star counts and capability snapshots captured 2026-05-12. Earlier-generation CLI-orchestrator competitors (awslabs/cli-agent-orchestrator, emdash, umputun/ralphex) are in [`.sdd/competitors.md`](.sdd/competitors.md) with the same matrix.
+
+Bernstein's wedge in this category is the auditability column — HMAC-chained audit, signed agent cards, per-artefact lineage, air-gap profile — plus Python-library shape and the widest adapter coverage. None of the bigger projects has the audit-chain stack; that's the column the regulated-buyer cares about. We are not winning on stars or polish. If you want the polished Go TUI for parallel Claude on your Mac, claude-squad is the right tool. If you want the swarm framing with the broadest MCP tool surface, claude-flow is. If you want a kanban board UI, vibe-kanban is. If you want the workflow-YAML primitive with web UI and chat integration, Archon is. If you need to ship a regulator-ready audit export and run on-prem behind a firewall, Bernstein.
 
 ## what people use it for
 
