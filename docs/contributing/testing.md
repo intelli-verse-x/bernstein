@@ -12,6 +12,7 @@ locally without waiting for the cloud runner.
 | **Schemathesis**            | 5xx leaks against fuzzed REST inputs                              | PR (allow-list), nightly (full)  |
 | **CrossHair**               | Logic errors in pure helpers (concolic execution, assert checks)  | nightly only         |
 | **mutmut diff-only**        | Test-effectiveness gaps on PR-changed lines                       | PR (advisory)       |
+| **mutmut fixed paths**      | Per-module kill-rate gate on a fixed critical-path module list    | PR (path-filtered) + weekly cron  |
 | **mutmut full**             | Test-effectiveness gaps across the whole repo                     | nightly (advisory)  |
 | **Semgrep** (custom rules)  | eval/exec/pickle in production, env-leak in `_spawn_*`            | PR (ERROR fails)    |
 | **Bandit**                  | Generic Python security smells (shell=True, weak hash, tarfile)   | PR (HIGH only)      |
@@ -108,6 +109,35 @@ The mutation operator changed `==` to `!=` (etc.) and no test
 caught it. Either add a test that distinguishes the two operators
 or, if the mutation is genuinely undetectable (e.g. an off-by-one
 in a comment-only path), document why in `mutmut_config.py`.
+
+### mutmut fixed-paths gate
+`mutation-fixed.yml` runs `scripts/mutmut_critical.py` against a
+fixed list of high-risk modules (atomic claim, HMAC audit chain,
+audit integrity verifier, lineage v1 trio, seed parser) and gates
+on a per-module kill rate. The module list, per-module thresholds,
+and wall-clock budgets live in `scripts/mutmut_critical.py:MODULES`.
+
+The gate is **advisory** while thresholds calibrate (the matrix job
+sets `continue-on-error: true`). The PR comment posted by the
+workflow summarises each module's score and survivors; until the
+gate is flipped to enforcing, treat a red row as a follow-up TODO,
+not a merge blocker.
+
+Reproduce locally:
+
+```bash
+# All modules (slow — budgets sum to about an hour).
+uv run python scripts/mutmut_critical.py
+
+# One module:
+uv run python scripts/mutmut_critical.py --only claim_next
+uv run python scripts/mutmut_critical.py --list   # show keys
+```
+
+Adding a module to the gate: extend `MODULES` in
+`scripts/mutmut_critical.py`, mirror the matrix in
+`.github/workflows/mutation-fixed.yml`, and add the source/test
+paths to the `paths:` filter on the same workflow.
 
 ## CI cost budget
 
