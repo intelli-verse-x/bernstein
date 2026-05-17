@@ -1,152 +1,150 @@
-# Python bytecode and distribution
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
-build/
-
-# Python environments
-.venv/
-
-# Environment variables
+# Python bytecode and distribution
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Python environments
+.venv/
+
+# Environment variables
+
+# A2A v1.0 agent-card signing keys — minted on first run, must NEVER be committed.
+.bernstein/keys/
+
+# Internal docs (local only — kept on disk, excluded from git)
+docs/superpowers/
+docs/research/
+docs/launch/
+docs/social/
+docs/conference/
+docs/plans/
+docs/specs/
+docs/content-calendar.md
+docs/jetbrains-deferral.md
+docs/roadmap-200-tickets.md
+
+# IDE and Editor directories/files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# AI/assistant/Claude-specific tooling
+.claude/
+
+# Package and dependency caches
+node_modules/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Bernstein workspace state — .sdd must NEVER be committed to git (CI enforced)
+.sdd/
+
+# MkDocs build output
+site/
+
+# Design specs and development plans (private)
+docs/specs/
+docs/plans/
+
+# Build / test artifacts
+coverage-test.xml
+coverage*.xml
+*.junit.xml
+htmlcov/
+.coverage
+
+# Project/Repository-specific generated or log files
+*.pid
+*.log
+
+# Git worktrees
+.worktrees/
+
+# Coverage reports
+.coverage
+coverage.xml
+htmlcov/
+
+# Documentation and content
+docs/social/
+docs/content-calendar.md
+docs/research*
+
+# Internal-only design specs / workflow design (never ship to public docs)
+dev/
+docs/internal/
+docs/strategy/
+docs/competitive/
+docs/_internal/
+
+# Release-notes drafts and outreach copy (live in /pr/, never the repo)
+.release-notes-*.draft.md
+.release-notes-*.outreach.md
+.release-notes-*.internal.md
+.release-notes-*.wip.md
+.release-*.md
+*-outreach.md
+*-draft.md
+*.draft.md
+
+# Marketing
+marketing/*
+
+# Runtime-local MCP config (localhost server, not for sharing)
+.claude/mcp.json
+.hypothesis/
+.mcpregistry_github_token
+.mcpregistry_registry_token
+# Stray secret-token files.  Narrowed from `*token*` — that pattern also
+# matched `src/bernstein/core/tokens/**`, which made hatchling drop the
+# entire sub-package from the wheel (v1.8.10 crashed on `bernstein run`
+# with ModuleNotFoundError: bernstein.core.tokens).  Do NOT revert.
+*.token
+*_token.json
+*_token.yaml
+*_token.txt
+auth_token*
+docs/openapi.json
+
+# pytest-benchmark output
+.benchmarks/
+
+# Local benchmark run artifacts (simulation/eval outputs — regenerated on demand)
+benchmarks/results/
+benchmarks/swe_bench/results/
+.cache/
+
+# Internal-only research / strategy / audit material (never ship to public docs)
+docs/internal/
+docs/strategy/
+docs/competitive/
+docs/_internal/
+docs/**/_internal/
+docs/**/INTERNAL_*.md
+docs/**/*-internal.md
+docs/**/*-strategy.md
+docs/**/*-roadmap.md
+docs/**/*-deep-audit*.md
+docs/**/*-deep-dive*.md
+docs/**/*-analysis-v*.md
+docs/**/*-roadmap-signals*.md
+docs/**/*-inheritance*.md
+docs/**/*-gap-map*.md
+docs/**/*-backlog-*.md
+docs/**/RESRCH-*.md
+docs/**/KF-*.md
+docs/**/MT-*.md
+docs/**/OAI-*.md
+docs/**/SDD-*.md
+docs/**/RAG-*.md
+
+# mutmut 3 working tree (./mutants/) and mutation-test cache (.mutmut-cache)
+mutants/
+.mutmut-cache
+config.bat
 .env
-.env.*
-.env.local
-
-# A2A v1.0 agent-card signing keys — minted on first run, must NEVER be committed.
-.bernstein/keys/
-
-# Internal docs (local only — kept on disk, excluded from git)
-docs/superpowers/
-docs/research/
-docs/launch/
-docs/social/
-docs/conference/
-docs/plans/
-docs/specs/
-docs/content-calendar.md
-docs/jetbrains-deferral.md
-docs/roadmap-200-tickets.md
-
-# IDE and Editor directories/files
-.DS_Store
-.idea/
-.vscode/
-*.swp
-
-# AI/assistant/Claude-specific tooling
-.claude/
-
-# Package and dependency caches
-node_modules/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-
-# Bernstein workspace state — .sdd must NEVER be committed to git (CI enforced)
-.sdd/
-
-# MkDocs build output
-site/
-
-# Design specs and development plans (private)
-docs/specs/
-docs/plans/
-
-# Build / test artifacts
-coverage-test.xml
-coverage*.xml
-*.junit.xml
-htmlcov/
-.coverage
-
-# Project/Repository-specific generated or log files
-*.pid
-*.log
-
-# Git worktrees
-.worktrees/
-
-# Coverage reports
-.coverage
-coverage.xml
-htmlcov/
-
-# Documentation and content
-docs/social/
-docs/content-calendar.md
-docs/research*
-
-# Internal-only design specs / workflow design (never ship to public docs)
-dev/
-docs/internal/
-docs/strategy/
-docs/competitive/
-docs/_internal/
-
-# Release-notes drafts and outreach copy (live in /pr/, never the repo)
-.release-notes-*.draft.md
-.release-notes-*.outreach.md
-.release-notes-*.internal.md
-.release-notes-*.wip.md
-.release-*.md
-*-outreach.md
-*-draft.md
-*.draft.md
-
-# Marketing
-marketing/*
-
-# Runtime-local MCP config (localhost server, not for sharing)
-.claude/mcp.json
-.hypothesis/
-.mcpregistry_github_token
-.mcpregistry_registry_token
-# Stray secret-token files.  Narrowed from `*token*` — that pattern also
-# matched `src/bernstein/core/tokens/**`, which made hatchling drop the
-# entire sub-package from the wheel (v1.8.10 crashed on `bernstein run`
-# with ModuleNotFoundError: bernstein.core.tokens).  Do NOT revert.
-*.token
-*_token.json
-*_token.yaml
-*_token.txt
-auth_token*
-docs/openapi.json
-
-# pytest-benchmark output
-.benchmarks/
-.env
-
-# Local benchmark run artifacts (simulation/eval outputs — regenerated on demand)
-benchmarks/results/
-benchmarks/swe_bench/results/
-.cache/
-
-# Internal-only research / strategy / audit material (never ship to public docs)
-docs/internal/
-docs/strategy/
-docs/competitive/
-docs/_internal/
-docs/**/_internal/
-docs/**/INTERNAL_*.md
-docs/**/*-internal.md
-docs/**/*-strategy.md
-docs/**/*-roadmap.md
-docs/**/*-deep-audit*.md
-docs/**/*-deep-dive*.md
-docs/**/*-analysis-v*.md
-docs/**/*-roadmap-signals*.md
-docs/**/*-inheritance*.md
-docs/**/*-gap-map*.md
-docs/**/*-backlog-*.md
-docs/**/RESRCH-*.md
-docs/**/KF-*.md
-docs/**/MT-*.md
-docs/**/OAI-*.md
-docs/**/SDD-*.md
-docs/**/RAG-*.md
-
-# mutmut 3 working tree (./mutants/) and mutation-test cache (.mutmut-cache)
-mutants/
-.mutmut-cache
