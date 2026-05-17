@@ -136,7 +136,7 @@ def lock_gc(repo_root: Path):  # type: ignore[no-untyped-def]
     lock_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     except FileExistsError as exc:
         raise GcLockError(f"another worktree GC is already running ({lock_path})") from exc
 
