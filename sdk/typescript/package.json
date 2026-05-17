@@ -1,7 +1,7 @@
 {
   "name": "@bernstein/sdk",
   "version": "0.1.0",
-  "description": "Integration SDK for Bernstein — connect CI/CD, issue trackers, and chat tools",
+  "description": "Integration SDK for Bernstein \u2014 connect CI/CD, issue trackers, and chat tools",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -31,9 +31,12 @@
       "types": "./dist/adapters/github-actions.d.ts"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "node init && tsc",
     "test": "jest",
     "lint": "eslint src --ext .ts"
   },
@@ -50,5 +53,14 @@
     "url": "https://github.com/your-org/bernstein",
     "directory": "sdk/typescript"
   },
-  "keywords": ["bernstein", "orchestration", "sdk", "jira", "linear", "slack", "teams", "ci-cd"]
+  "keywords": [
+    "bernstein",
+    "orchestration",
+    "sdk",
+    "jira",
+    "linear",
+    "slack",
+    "teams",
+    "ci-cd"
+  ]
 }
