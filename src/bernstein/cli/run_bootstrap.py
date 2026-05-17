@@ -269,6 +269,7 @@ def _propagate_env_flags(
     hard_budget_usd: float | None = None,
     allow_paid: bool = False,
     permission_profile: str | None = None,
+    max_blast_radius: float | None = None,
 ) -> None:
     """Set environment variables so orchestrator subprocesses inherit CLI flags."""
     _flag_map: list[tuple[bool, str]] = [
@@ -308,6 +309,13 @@ def _propagate_env_flags(
     # cumulative spend reaches this value, no soft-warn ramp.
     if hard_budget_usd is not None and hard_budget_usd > 0.0:
         os.environ["BERNSTEIN_HARD_BUDGET_USD"] = f"{hard_budget_usd:.6f}"
+
+    # Reversibility gate (#1322). Off-by-default: only propagated when
+    # the operator passes ``--max-blast-radius`` so existing runs are
+    # unaffected. The merge / deploy gate reads this env var and refuses
+    # changes whose blast-radius score exceeds the ceiling.
+    if max_blast_radius is not None:
+        os.environ["BERNSTEIN_MAX_BLAST_RADIUS"] = f"{max_blast_radius:.4f}"
 
     if sandbox:
         normalized = sandbox.lower()
@@ -994,6 +1002,18 @@ def exec_restart() -> None:
         "agent is spawned, no retry."
     ),
 )
+@click.option(
+    "--max-blast-radius",
+    "max_blast_radius",
+    type=click.FloatRange(0.0, 1.0),
+    default=None,
+    help=(
+        "Reversibility gate (#1322): refuse merges whose blast-radius score "
+        "exceeds the supplied ceiling [0, 1]. Hard one-way changes (DROP/"
+        "DELETE SQL, rm -rf, schema migrations, secrets writes) always "
+        "score 1.0. Off by default; existing runs are unaffected."
+    ),
+)
 def run(
     plan_file: Path | None,
     goal: str | None,
@@ -1031,6 +1051,7 @@ def run(
     max_cost_usd: float | None = None,
     budget_spec: str | None = None,
     hard_budget_spec: str | None = None,
+    max_blast_radius: float | None = None,
 ) -> None:
     """Parse seed, init workspace, start server, launch agents.
 
@@ -1105,6 +1126,7 @@ def run(
         hard_budget_usd=hard_budget_usd,
         allow_paid=allow_paid,
         permission_profile=permission_profile,
+        max_blast_radius=max_blast_radius,
     )
 
     _install_network_policy(run_profile=run_profile, allow_network=allow_network)
