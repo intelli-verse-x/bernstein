@@ -28,7 +28,6 @@ isolation guarantees the rest of the codebase relies on (T481, T580).
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import secrets
@@ -351,8 +350,7 @@ def fork_session(
     fork_commit = _git_head_in(parent_worktree)
     if not fork_commit:
         raise SessionForkError(
-            f"could not resolve git HEAD for parent worktree {parent_worktree}; "
-            "is this a git repository?"
+            f"could not resolve git HEAD for parent worktree {parent_worktree}; is this a git repository?"
         )
 
     parent_branch = _git_current_branch(parent_worktree)
@@ -375,9 +373,7 @@ def fork_session(
     )
     if not result.ok:
         stderr = (result.stderr or "").strip()
-        raise SessionForkError(
-            f"git worktree add failed for fork '{fork_session_id}': {stderr or result.stdout!r}"
-        )
+        raise SessionForkError(f"git worktree add failed for fork '{fork_session_id}': {stderr or result.stdout!r}")
 
     snapshot_path = _clone_session_snapshot(
         parent_session=parent_session,
@@ -444,21 +440,6 @@ def worktree_add_from_commit(
         timeout=30,
     )
 
-
-def result_ok(result: object) -> bool:
-    """Return whether a ``GitResult``-like object has ``returncode == 0``.
-
-    Tests substitute a lightweight stub for ``run_git``; tolerating an
-    object with just ``returncode`` keeps the contract loose without
-    importing the concrete dataclass at module load time.
-    """
-    return bool(getattr(result, "ok", getattr(result, "returncode", 1) == 0))
-
-
-# Public re-exports — keep ``worktree_add`` referenced so the import is
-# not pruned by unused-import linters when only the helper is consumed
-# in production.
-_ = worktree_add
 
 __all__ = [
     "SessionFork",
