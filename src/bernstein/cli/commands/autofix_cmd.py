@@ -43,6 +43,16 @@ from bernstein.core.autofix.dispatcher import (
     AttemptCounter,
     DispatchResult,
 )
+from bernstein.core.autofix.review_router import (
+    GhInvocationError,
+    ReviewRouter,
+    WorktreeRecord,
+    WorktreeRegistry,
+    default_registry_path,
+    emit_jsonl,
+    poll_loop,
+    resolve_pr_number,
+)
 from bernstein.core.security.audit import AuditLog
 
 __all__ = ["autofix_group"]
@@ -434,3 +444,210 @@ def attach_cmd(limit: int) -> None:
                 click.echo(json.dumps(fresh, sort_keys=True))
     except KeyboardInterrupt:
         return
+
+
+# ---------------------------------------------------------------------------
+# review — poll a PR for review-comment routing
+# ---------------------------------------------------------------------------
+
+
+_REVIEW_TASK_LOG = Path(".sdd") / "runtime" / "autofix-review-tasks.jsonl"
+
+
+@autofix_group.command("review")
+@click.option(
+    "--pr",
+    "pr_number",
+    type=int,
+    default=None,
+    help="PR number to watch (overrides env / git config).",
+)
+@click.option(
+    "--repo",
+    "repo_slug",
+    default="",
+    help="GitHub owner/name slug; passed to ``gh pr view --repo``.",
+)
+@click.option(
+    "--poll-seconds",
+    type=float,
+    default=60.0,
+    show_default=True,
+    help="Seconds to sleep between polls.",
+)
+@click.option(
+    "--once",
+    is_flag=True,
+    default=False,
+    help="Run a single poll and exit.",
+)
+@click.option(
+    "--task-log",
+    "task_log_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Override the JSONL path the router writes structured tasks to.",
+)
+def review_cmd(
+    pr_number: int | None,
+    repo_slug: str,
+    poll_seconds: float,
+    once: bool,
+    task_log_path: Path | None,
+) -> None:
+    """Poll a PR's review threads and emit structured tasks for new "request changes" comments.
+
+    The command resolves which PR to watch in the following order:
+
+    1. ``--pr`` argument.
+    2. ``BERNSTEIN_REVIEW_PR_NUMBER`` environment variable.
+    3. ``git config bernstein.spawn-pr``.
+
+    Tasks are appended as JSONL to ``.sdd/runtime/autofix-review-tasks.jsonl``
+    relative to the current workspace (override with ``--task-log``).
+    Each task carries the file, line range, comment body, reviewer login,
+    diff hunk and permalink — enough for the spawning agent to address
+    the comment without re-fetching from GitHub.
+    """
+    workdir = _resolve_workdir()
+    resolved_pr = resolve_pr_number(explicit=pr_number, workdir=workdir)
+    if resolved_pr is None:
+        raise click.ClickException(
+            "no PR specified — pass --pr, set BERNSTEIN_REVIEW_PR_NUMBER, or set ``git config bernstein.spawn-pr``."
+        )
+
+    log_path = task_log_path or (workdir / _REVIEW_TASK_LOG)
+    sink = emit_jsonl(log_path)
+    router = ReviewRouter(
+        pr_number=resolved_pr,
+        task_sink=sink,
+        repo=repo_slug,
+    )
+
+    # Surface the spawning agent's worktree (if registered) so an
+    # operator running ``review --once`` from any directory still
+    # sees which workspace the eventual dispatcher will resume.
+    registry = WorktreeRegistry(default_registry_path(workdir))
+    record = registry.lookup(resolved_pr)
+    if record is not None:
+        click.echo(
+            f"review_router: PR #{resolved_pr} maps to worktree {record.worktree_path}"
+            + (f" (run_id={record.run_id})" if record.run_id else "")
+        )
+
+    if once:
+        try:
+            outcome = router.poll_once()
+        except GhInvocationError as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(
+            f"review_router: PR #{resolved_pr} emitted {len(outcome.tasks)} task(s); "
+            f"skipped {outcome.skipped_seen} already-seen comment(s); log={log_path}"
+        )
+        return
+
+    click.echo(f"review_router: watching PR #{resolved_pr} every {poll_seconds:.1f}s; log={log_path}")
+    try:
+        polls = poll_loop(router, poll_seconds=poll_seconds)
+    except KeyboardInterrupt:
+        click.echo("review_router: interrupted.")
+        return
+    click.echo(f"review_router: completed after {polls} poll(s).")
+
+
+# ---------------------------------------------------------------------------
+# review-register / review-resolve — operator-facing worktree registry
+# ---------------------------------------------------------------------------
+
+
+@autofix_group.command("review-register")
+@click.option(
+    "--pr",
+    "pr_number",
+    type=int,
+    required=True,
+    help="PR number opened by the spawning agent.",
+)
+@click.option(
+    "--worktree",
+    "worktree_path",
+    type=click.Path(file_okay=False, path_type=Path),
+    required=True,
+    help="Absolute path to the worktree the agent used.",
+)
+@click.option(
+    "--run-id",
+    "run_id",
+    default="",
+    help="Bernstein run id that opened the PR (optional, recorded for audit).",
+)
+@click.option(
+    "--repo",
+    "repo_slug",
+    default="",
+    help="GitHub owner/name slug (optional).",
+)
+def review_register_cmd(
+    pr_number: int,
+    worktree_path: Path,
+    run_id: str,
+    repo_slug: str,
+) -> None:
+    """Persist a ``pr_number -> worktree_path`` mapping.
+
+    Call this immediately after ``bernstein pr`` opens a review-ready
+    PR so a future ``bernstein autofix review`` invocation can locate
+    the spawning agent's workspace, even after a host restart.
+    """
+    workdir = _resolve_workdir()
+    registry = WorktreeRegistry(default_registry_path(workdir))
+    try:
+        registry.register(
+            WorktreeRecord(
+                pr_number=pr_number,
+                worktree_path=str(worktree_path),
+                run_id=run_id,
+                repo=repo_slug,
+            )
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"review_router: registered PR #{pr_number} -> {worktree_path}")
+
+
+@autofix_group.command("review-resolve")
+@click.option(
+    "--pr",
+    "pr_number",
+    type=int,
+    required=True,
+    help="PR number to look up.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    default=False,
+    help="Emit machine-readable JSON instead of plain text.",
+)
+def review_resolve_cmd(pr_number: int, as_json: bool) -> None:
+    """Print the registered worktree path for a PR (exit non-zero if missing)."""
+    workdir = _resolve_workdir()
+    registry = WorktreeRegistry(default_registry_path(workdir))
+    record = registry.lookup(pr_number)
+    if record is None:
+        if as_json:
+            click.echo(json.dumps({"pr_number": pr_number, "found": False}, sort_keys=True))
+        else:
+            click.echo(f"review_router: no registration for PR #{pr_number}", err=True)
+        sys.exit(1)
+    if as_json:
+        payload = {"pr_number": pr_number, "found": True, **record.to_payload()}
+        click.echo(json.dumps(payload, sort_keys=True))
+        return
+    line = f"PR #{record.pr_number}  worktree={record.worktree_path}"
+    if record.run_id:
+        line += f"  run_id={record.run_id}"
+    if record.repo:
+        line += f"  repo={record.repo}"
+    click.echo(line)
