@@ -193,6 +193,9 @@ DOCUMENTED_COMMANDS: frozenset[str] = frozenset(
         "analyze",
         # Recorded run-session inspection + fork (#1222)
         "session",
+        # Bot-added: drift autofix (regen_contract_drift.py)
+        "compare",
+        "resume",
     }
 )
 
