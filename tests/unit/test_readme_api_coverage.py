@@ -190,6 +190,8 @@ DOCUMENTED_COMMANDS: frozenset[str] = frozenset(
         # Bughunt 2026-05-13 release wave
         "adapters",
         "analyze",
+        # Bot-added: drift autofix (regen_contract_drift.py)
+        "session",
     }
 )
 
