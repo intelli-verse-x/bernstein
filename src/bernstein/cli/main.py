@@ -729,6 +729,9 @@ def cli(
         idle=False,
         budget_spec=None,
         hard_budget_spec=None,
+        # Bot-added: drift autofix (regen_contract_drift.py)
+        permission_profile=None,
+        budget_cap=None,
     )
 
 
