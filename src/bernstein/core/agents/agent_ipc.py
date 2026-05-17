@@ -17,6 +17,21 @@ logger = logging.getLogger(__name__)
 # Populated by adapters that keep the pipe open after spawn.
 _stdin_pipes: dict[str, IO[bytes]] = {}
 
+# Maximum length of a sanitised session_id rendered into a log record.
+# session_id is normally a UUID-ish slug well under this bound; the cap
+# protects against attacker-supplied oversize input.
+_SAFE_ID_MAX_LEN = 128
+
+
+def _safe_id(session_id: str) -> str:
+    """Sanitize a session_id for use in log records.
+
+    Explicit chained ``str.replace`` calls (rather than a regex) so static
+    analysers — CodeQL ``py/log-injection`` in particular — recognise the
+    sanitiser and stop flagging the surrounding logger callsites.
+    """
+    return (session_id.replace("\n", "_").replace("\r", "_").replace("\t", "_").replace("\x1b", "_"))[:_SAFE_ID_MAX_LEN]
+
 
 def register_stdin_pipe(session_id: str, pipe: IO[bytes]) -> None:
     """Register a stdin pipe for an agent session.
@@ -24,14 +39,14 @@ def register_stdin_pipe(session_id: str, pipe: IO[bytes]) -> None:
     Called by adapters after spawning an agent that supports stdin IPC.
     """
     _stdin_pipes[session_id] = pipe
-    logger.debug("Registered stdin pipe for session %s", session_id)
+    logger.debug("Registered stdin pipe for session %s", _safe_id(session_id))
 
 
 def unregister_stdin_pipe(session_id: str) -> None:
     """Remove a stdin pipe when an agent exits."""
     removed = _stdin_pipes.pop(session_id, None)
     if removed:
-        logger.debug("Unregistered stdin pipe for session %s", session_id)
+        logger.debug("Unregistered stdin pipe for session %s", _safe_id(session_id))
 
 
 def has_stdin_pipe(session_id: str) -> bool:
@@ -58,10 +73,10 @@ def send_message(session_id: str, message: str) -> bool:
         )
         pipe.write(payload.encode("utf-8") + b"\n")
         pipe.flush()
-        logger.debug("Sent message via stdin pipe to session %s", session_id)
+        logger.debug("Sent message via stdin pipe to session %s", _safe_id(session_id))
         return True
     except (OSError, ValueError) as exc:
-        logger.warning("Stdin pipe broken for session %s: %s", session_id, exc)
+        logger.warning("Stdin pipe broken for session %s: %s", _safe_id(session_id), exc)
         unregister_stdin_pipe(session_id)
         return False
 
