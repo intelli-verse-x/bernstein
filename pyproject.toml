@@ -615,7 +615,11 @@ dev = [
     "ruff>=0.9",
     "pyright>=1.1",
     "scikit-learn>=1.5",
-    "mutmut>=2.4",
+    # Pinned to the 3.x line — the focused harness in
+    # scripts/mutmut_critical.py / scripts/mutmut_lineage.py is validated
+    # against 3.5.0. mutmut's config surface and CLI moved between 2.x
+    # and 3.x; bump the upper bound deliberately when validating 4.x.
+    "mutmut>=3.5,<4",
     "import-linter>=2.0",  # Architecture contracts (`uv run lint-imports`)
     # CI hardening 2026 — keep this section in sync with [project.optional-dependencies].dev.
     "schemathesis>=4.18.1",
@@ -644,6 +648,14 @@ dev = [
 # project-wide conftest pulls heavyweight imports that mutmut 3's
 # `mutants/` shadow tree can't satisfy, so we ship a thin custom
 # harness alongside the standard config for ad-hoc deep runs.
+#
+# The wider fixed critical-path gate (claim_next, audit_log, audit
+# integrity, lineage v1, seed parser) is driven by
+# `scripts/mutmut_critical.py` and the .github/workflows/mutation-fixed.yml
+# workflow. The list below is kept *narrow* on purpose: anything bigger
+# breaks the mutmut-3 shadow tree because of our heavyweight conftest.
+# To add a module to the gate, extend `MODULES` in mutmut_critical.py
+# and the workflow matrix, NOT this list.
 paths_to_mutate = [
     "src/bernstein/core/lineage/gate.py",
     "src/bernstein/core/lineage/tips.py",

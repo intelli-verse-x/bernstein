@@ -434,7 +434,7 @@ dev = [
     { name = "diff-cover", specifier = ">=9.0" },
     { name = "hypothesis", specifier = ">=6.100" },
     { name = "import-linter", specifier = ">=2.0" },
-    { name = "mutmut", specifier = ">=2.4" },
+    { name = "mutmut", specifier = ">=3.5,<4" },
     { name = "pip-audit", specifier = ">=2.7" },
     { name = "psutil", specifier = ">=5.9" },
     { name = "pypdf", specifier = ">=4.0" },
