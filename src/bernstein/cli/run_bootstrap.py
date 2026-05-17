@@ -222,6 +222,34 @@ SANDBOX_CHOICES: tuple[str, ...] = (
 SANDBOX_FREE_CHOICES: tuple[str, ...] = ("docker", "podman", "worktree")
 
 
+def _parse_budget_spec(raw: str | float | None) -> float | None:
+    """Parse a budget spec like ``5usd``, ``$5``, or ``5.5`` to a float.
+
+    Returns ``None`` when *raw* is None / blank. Negative values are
+    clamped to ``0.0`` (meaning "unlimited" per
+    :func:`bernstein.core.cost.cost_tracker.resolve_run_budget_usd`).
+    Issue #1320: shared by ``--budget`` and ``--hard-budget``.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return max(0.0, float(raw))
+    s = str(raw).strip().lower()
+    if not s:
+        return None
+    s = s.removesuffix("usd").removesuffix("$").strip()
+    s = s.removeprefix("$").strip()
+    try:
+        v = float(s)
+    except ValueError as exc:
+        import click
+
+        raise click.BadParameter(
+            f"Invalid budget spec: {raw!r}. Use e.g. '5usd', '$5', or '5.0'.",
+        ) from exc
+    return max(0.0, v)
+
+
 def _propagate_env_flags(
     *,
     profile: bool,
@@ -238,6 +266,7 @@ def _propagate_env_flags(
     activity_log_path: str | None,
     audit: bool,
     max_cost_usd: float | None = None,
+    hard_budget_usd: float | None = None,
     allow_paid: bool = False,
 ) -> None:
     """Set environment variables so orchestrator subprocesses inherit CLI flags."""
@@ -271,6 +300,12 @@ def _propagate_env_flags(
         from bernstein.core.cost_tracker import ENV_MAX_COST_USD
 
         os.environ[ENV_MAX_COST_USD] = f"{max_cost_usd:.6f}"
+
+    # Hard cap kill switch (issue #1320). Independent of ``--budget`` /
+    # ``--max-cost-usd``: when set, the orchestrator halts as soon as
+    # cumulative spend reaches this value, no soft-warn ramp.
+    if hard_budget_usd is not None and hard_budget_usd > 0.0:
+        os.environ["BERNSTEIN_HARD_BUDGET_USD"] = f"{hard_budget_usd:.6f}"
 
     if sandbox:
         normalized = sandbox.lower()
@@ -917,6 +952,31 @@ def exec_restart() -> None:
         "Off-by-default (overrides bernstein.yaml ``budget`` and run_config.json)."
     ),
 )
+@click.option(
+    "--budget",
+    "budget_spec",
+    type=str,
+    default=None,
+    metavar="SPEC",
+    help=(
+        "Soft cap on total run spend (issue #1320). Accepts ``5usd``, "
+        "``$5``, or ``5.0``. Warns + reroutes to a cheaper model at 80%, "
+        "halts new work at 100%. Alias of ``--max-cost-usd`` with friendlier "
+        "parsing; both flags set the same env var."
+    ),
+)
+@click.option(
+    "--hard-budget",
+    "hard_budget_spec",
+    type=str,
+    default=None,
+    metavar="SPEC",
+    help=(
+        "Hard cap kill switch (issue #1320). Accepts ``10usd``, ``$10``, "
+        "or ``10.0``. Independent of ``--budget``: once tripped no new "
+        "agent is spawned, no retry."
+    ),
+)
 def run(
     plan_file: Path | None,
     goal: str | None,
@@ -951,6 +1011,8 @@ def run(
     auto_pr: bool = False,
     activity_log_path: str | None = None,
     max_cost_usd: float | None = None,
+    budget_spec: str | None = None,
+    hard_budget_spec: str | None = None,
 ) -> None:
     """Parse seed, init workspace, start server, launch agents.
 
@@ -975,7 +1037,15 @@ def run(
       bernstein conduct --container --two-phase-sandbox  # two-phase sandboxed execution
       bernstein conduct --audit                # SOC 2 audit mode (HMAC-chained log + Merkle seal)
       bernstein conduct --max-cost-usd 1.50    # hard cap total run spend at $1.50
+      bernstein run plan.yaml --budget 5usd --hard-budget 10usd  # soft + hard caps (#1320)
     """
+    # Issue #1320: ``--budget`` is the friendlier alias of ``--max-cost-usd``
+    # and shares the same env var. When both are set, the operator's
+    # explicit ``--max-cost-usd`` wins for backward compat.
+    budget_value = _parse_budget_spec(budget_spec)
+    if budget_value is not None and max_cost_usd is None:
+        max_cost_usd = budget_value
+    hard_budget_usd = _parse_budget_spec(hard_budget_spec)
     # Print the startup banner unless the parent ``cli()`` group already
     # rendered the premium splash for this invocation. Regressed by commit
     # 1e5c13013 ("fix: ... double banner ..."), which mistakenly removed the
@@ -1014,6 +1084,7 @@ def run(
         activity_log_path=activity_log_path,
         audit=audit,
         max_cost_usd=max_cost_usd,
+        hard_budget_usd=hard_budget_usd,
         allow_paid=allow_paid,
     )
 
