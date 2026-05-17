@@ -726,6 +726,8 @@ def cli(
         activity_log_path=activity_log_path,
         max_cost_usd=None,
         idle=False,
+        # Bot-added: drift autofix (regen_contract_drift.py)
+        permission_profile=None,
     )
 
 
