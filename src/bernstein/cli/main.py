@@ -101,6 +101,7 @@ from bernstein.cli.slo_cmd import slo_cmd
 from bernstein.cli.task_cmd import (
     add_task,
     approve,
+    backlog_group,
     cancel,
     list_tasks,
     logs_cmd,
@@ -148,6 +149,7 @@ __all__ = [
     "auth_headers",
     "auth_login",
     # Groups and commands from advanced_cmd
+    "backlog_group",
     "benchmark_group",
     "cache_group",
     "cancel",
@@ -744,6 +746,7 @@ plan.add_command(plan_ls)
 plan.add_command(plan_show)
 cli.add_command(plan)
 cli.add_command(plan, "tasks")
+cli.add_command(backlog_group, "backlog")
 cli.add_command(logs_group, "logs")
 cli.add_command(list_tasks, "list-tasks")
 
