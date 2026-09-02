@@ -146,4 +146,3 @@ docs/**/RAG-*.md
 # mutmut 3 working tree (./mutants/) and mutation-test cache (.mutmut-cache)
 mutants/
 .mutmut-cache
-config.bat
